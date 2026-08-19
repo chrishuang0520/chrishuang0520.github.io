@@ -187,7 +187,29 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
 .ap-divider{border-top:1px dashed #ccd5d0;margin:24px 0 18px}
 .ap-conclusion{padding:14px 16px;background:linear-gradient(135deg,#f5faf7 0%,#eaf5f0 100%);border-radius:10px;margin:16px 0 0;color:#444}
 .ap-conclusion-text{font-size:14.5px;line-height:1.8}
-.ap-conclusion-text::before{content:"📝 写在最后 ";font-weight:bold;color:var(--primary);display:block;margin-bottom:6px}.gen-type{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ap-conclusion-text::before{content:"📝 写在最后 ";font-weight:bold;color:var(--primary);display:block;margin-bottom:6px}
+
+/* ====== 配图操作栏 ====== */
+.ap-img-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding:10px;background:#f6faf9;border:1px solid var(--border);border-radius:10px}
+.ap-img-actions .ap-prompt-input{flex:1;min-width:140px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);background:#fff;resize:vertical;min-height:34px;line-height:1.5}
+.ap-img-actions .ap-prompt-input:focus{border-color:var(--primary);outline:none;box-shadow:0 0 0 2px var(--primary-soft)}
+.ap-img-actions select{padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text);background:#fff;cursor:pointer;max-width:140px}
+.ap-img-actions .btn{padding:6px 10px;font-size:12px;white-space:nowrap}
+.ap-img-actions .btn-danger{color:var(--danger);border-color:var(--danger-soft)}
+.ap-img-actions .btn-danger:hover{background:var(--danger-soft);border-color:var(--danger)}
+
+/* ====== 文字编辑模式 ====== */
+.ap-edit-toggle{display:flex;gap:8px;margin-bottom:4px}
+.ap-edit-toggle .btn{font-size:13px}
+[contenteditable="true"]:focus{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px;background:#fffef5;box-shadow:0 0 0 3px rgba(13,148,136,.08)}
+.ap-title[contenteditable="true"],.ap-h3[contenteditable="true"],.ap-content[contenteditable="true"],
+.ap-lead[contenteditable="true"],.ap-quote[contenteditable="true"],.ap-conclusion-text[contenteditable="true"]{cursor:text;border-radius:4px;transition:background .15s}
+.ap-title[contenteditable="true"]:hover,.ap-h3[contenteditable="true"]:hover,.ap-content[contenteditable="true"]:hover,
+.ap-lead[contenteditable="true"]:hover,.ap-quote[contenteditable="true"]:hover,.ap-conclusion-text[contenteditable="true"]:hover{background:#fffef5}
+.ap-points[contenteditable="true"] li{cursor:text;border-radius:4px;transition:background .15s}
+.ap-points[contenteditable="true"] li:hover{background:#fffef5}
+.ap-edit-hint{font-size:12px;color:var(--muted);padding:4px 0 8px;display:flex;align-items:center;gap:6px}
+.ap-edit-hint svg{width:14px;height:14px}.gen-type{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .gen-type .gt{display:flex;align-items:center;gap:8px;padding:11px;border:1.5px solid var(--border);border-radius:11px;
   font-size:13px;font-weight:600;color:var(--muted);text-align:left;transition:.15s}
 .gen-type .gt svg{width:17px;height:17px;flex-shrink:0}
@@ -1519,41 +1541,63 @@ function parseArticleJSON(text){
   return null;
 }
 
+// 生成模型选择下拉
+function imgProviderOptions(selected){
+  return IMAGE_PROVIDERS.map(p=>`<option value="${p.key}" ${p.key===selected?'selected':''}>${esc(p.name)}</option>`).join('');
+}
+
+// 生成配图操作栏 HTML（当图片已存在时）
+function imgActionBar(key, prompt, currentProvider){
+  const sel = currentProvider || (state.aiConfig.image && state.aiConfig.image.provider) || 'minimax_img';
+  return `<div class="ap-img-actions">
+    <textarea class="ap-prompt-input" id="imgPrompt_${key=== '__cover__'?'cover':key}" placeholder="修改配图提示词">${esc(prompt||'')}</textarea>
+    <select id="imgModel_${key==='__cover__'?'cover':key}">${imgProviderOptions(sel)}</select>
+    <button class="btn btn-sm btn-primary" onclick="regenArticleImg('${key}')">重新生成</button>
+    <button class="btn btn-sm btn-danger" onclick="delArticleImg('${key}')">删除配图</button>
+  </div>`;
+}
+
 // 渲染公众号文章为可视化预览
 function renderArticlePreview(d){
   // 用于保存带已生成图片（key=sectionIndex, value=url）
   const imgs = state.lastArticleImgs || (state.lastArticleImgs = {});
+  const editing = state.articleEditing || false;
   let h = '<div class="article-preview">';
+  // 编辑切换栏
+  h += `<div class="ap-edit-toggle"><button class="btn btn-sm ${editing?'btn-primary':''}" onclick="toggleArticleEdit()">${editing?'✓ 完成编辑':'✎ 编辑文字'}</button></div>`;
+  if(editing) h += `<div class="ap-edit-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>点击任意文字可直接编辑，修改后自动保存到文章数据</div>`;
   // 1. 主标题
-  h += `<div class="ap-title">${esc(d.title||'未命名标题')}</div>`;
+  h += `<div class="ap-title" ${editing?'contenteditable="true" onblur="saveArticleField(\'title\',this.innerText)"':''}>${esc(d.title||'未命名标题')}</div>`;
   // 2. 封面图位
   const coverImg = imgs['__cover__'];
+  const coverProv = (state.aiConfig.image&&state.aiConfig.image.provider)||'minimax_img';
   h += `<div class="ap-cover" data-cover="${esc(d.coverPrompt||'')}">${
-    coverImg? `<img src="${esc(coverImg)}" alt="封面">`
+    coverImg? `<img src="${esc(coverImg)}" alt="封面">${imgActionBar('__cover__', d.coverPrompt||'', coverProv)}`
     : `<div class="ap-img-placeholder"><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><path d='M21 15l-5-5L5 21'/></svg><div class="ap-prompt">封面图：${esc(d.coverPrompt||'建议：与文章主题相关的医学插画')}</div><button class="btn btn-sm" onclick="genArticleImg('__cover__','${esc(d.coverPrompt||'').replace(/'/g,"\\'")}')">为封面配图</button></div>`
   }</div>`;
   // 3. 导语
-  if(d.lead) h += `<blockquote class="ap-lead">${esc(d.lead)}</blockquote>`;
+  if(d.lead) h += `<blockquote class="ap-lead" ${editing?'contenteditable="true" onblur="saveArticleField(\'lead\',this.innerText)"':''}>${esc(d.lead)}</blockquote>`;
   // 4. 章节
   (d.sections||[]).forEach((sec, i)=>{
     h += `<div class="ap-section">`;
-    h += `<h3 class="ap-h3">${esc(sec.heading||('第'+(i+1)+'节'))}</h3>`;
-    h += `<div class="ap-content">${esc(sec.content||'').replace(/\n/g,'<br>')}</div>`;
+    h += `<h3 class="ap-h3" ${editing?'contenteditable="true" onblur="saveArticleSection('+i+',\'heading\',this.innerText)"':''}>${esc(sec.heading||('第'+(i+1)+'节'))}</h3>`;
+    h += `<div class="ap-content" ${editing?'contenteditable="true" onblur="saveArticleSection('+i+',\'content\',this.innerText)"':''}>${esc(sec.content||'').replace(/\n/g,'<br>')}</div>`;
     if(sec.keyPoints && sec.keyPoints.length){
-      h += `<ul class="ap-points">${sec.keyPoints.map(p=>`<li>${esc(p)}</li>`).join('')}</ul>`;
+      h += `<ul class="ap-points" ${editing?'contenteditable="true" onblur="saveArticleSection('+i+',\'keyPoints\',this.innerText)"':''}>${sec.keyPoints.map(p=>`<li>${esc(p)}</li>`).join('')}</ul>`;
     }
-    if(sec.quote) h += `<blockquote class="ap-quote">${esc(sec.quote)}</blockquote>`;
+    if(sec.quote) h += `<blockquote class="ap-quote" ${editing?'contenteditable="true" onblur="saveArticleSection('+i+',\'quote\',this.innerText)"':''}>${esc(sec.quote)}</blockquote>`;
     // 配图位
     const secImg = imgs[String(i)];
+    const secProv = (state.aiConfig.image&&state.aiConfig.image.provider)||'minimax_img';
     h += `<div class="ap-figure" data-prompt="${esc(sec.imagePrompt||'')}">${
-      secImg? `<img src="${esc(secImg)}" alt="配图"><div class="ap-prompt">${esc(sec.imagePrompt)}</div>`
+      secImg? `<img src="${esc(secImg)}" alt="配图">${imgActionBar(String(i), sec.imagePrompt||'', secProv)}`
       : `<div class="ap-img-placeholder sm"><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><path d='M21 15l-5-5L5 21'/></svg><div class="ap-prompt">配图：${esc(sec.imagePrompt||'与本节内容相关的插画')}</div><button class="btn btn-sm" onclick="genArticleImg('${i}','${esc(sec.imagePrompt||'').replace(/'/g,"\\'")}')">为这节配图</button></div>`
     }</div>`;
     h += `</div>`;
   });
   // 5. 结尾/CTA
   if(d.conclusion){
-    h += `<div class="ap-conclusion"><div class="ap-divider"></div><div class="ap-conclusion-text">${esc(d.conclusion).replace(/\n/g,'<br>')}</div></div>`;
+    h += `<div class="ap-conclusion"><div class="ap-divider"></div><div class="ap-conclusion-text" ${editing?'contenteditable="true" onblur="saveArticleField(\'conclusion\',this.innerText)"':''}>${esc(d.conclusion).replace(/\n/g,'<br>')}</div></div>`;
   }
   h += '</div>';
   return h;
@@ -1630,19 +1674,40 @@ const IMAGE_PROVIDERS = [
 ];
 
 // 给公众号文章某位置生成图片。key='__cover__' 为封面，否则为 section index
-async function genArticleImg(key, prompt){
+// opts: {providerKey, customPrompt, noUIRefresh} — 可选，用于重新生成时指定不同模型/修改提示词
+async function genArticleImg(key, prompt, opts){
+  opts = opts || {};
   const cfg = state.aiConfig.image || {provider:'minimax_img', apiKey:'', baseUrl:'', model:''};
-  const prov = IMAGE_PROVIDERS.find(p=>p.key===cfg.provider) || IMAGE_PROVIDERS[0];
+  // 支持用不同 provider 重新生成
+  const provKey = opts.providerKey || cfg.provider;
+  const prov = IMAGE_PROVIDERS.find(p=>p.key===provKey) || IMAGE_PROVIDERS[0];
+  // 如果是自定义 provider，但用户在全局配了 key/base/model，仍然使用全局的凭证
   const apiKey = cfg.apiKey;
-  const baseUrl = (cfg.baseUrl || prov.baseUrl).replace(/\/+$/,'');
-  const model = cfg.model || prov.model;
+  // baseUrl/model：如果选了特定 provider，用该 provider 的默认值（除非用户全局配了自定义）
+  let baseUrl, model;
+  if(prov.key === cfg.provider){
+    // 用的是同一个 provider，用全局配置的 baseUrl/model
+    baseUrl = (cfg.baseUrl || prov.baseUrl).replace(/\/+$/,'');
+    model = cfg.model || prov.model;
+  }else{
+    // 用不同 provider 重新生成：用该 provider 默认 baseUrl/model，但共享同一个 apiKey
+    baseUrl = (prov.baseUrl||'').replace(/\/+$/,'');
+    model = prov.model;
+    // 如果全局配置也是自定义 provider，用全局的 baseUrl/model
+    if(cfg.provider==='custom_img' && cfg.baseUrl){
+      baseUrl = cfg.baseUrl.replace(/\/+$/,'');
+      model = cfg.model || '';
+    }
+  }
   if(!apiKey){ showToast('请先在 AI 设置里填写「图像 API Key」'); openSettings(); return; }
-  if(!prompt){ showToast('该位置无配图描述'); return; }
+  // 使用自定义提示词（如果提供）
+  const usePrompt = opts.customPrompt || prompt;
+  if(!usePrompt){ showToast('该位置无配图描述'); return; }
   const btn = document.activeElement;
   const oldTxt = btn ? btn.innerText : '';
   if(btn){ btn.disabled = true; btn.innerText = '生成中…'; }
-  showToast('正在生成配图（约 5-30 秒）…');
-  const fullPrompt = `${prompt}. Medical/biomedical illustration style, clean and professional, no text in image, suitable for science article cover.`;
+  showToast(`正在用 ${prov.name} 生成配图（约 5-30 秒）…`);
+  const fullPrompt = `${usePrompt}. Medical/biomedical illustration style, clean and professional, no text in image, suitable for science article cover.`;
   try{
     let url = '';
     if(prov.api==='minimax'){
@@ -1673,12 +1738,17 @@ async function genArticleImg(key, prompt){
     if(!url) throw new Error('未拿到图片 URL');
     state.lastArticleImgs = state.lastArticleImgs || {};
     state.lastArticleImgs[key] = url;
+    // 同步更新 lastArticleData 里的 prompt（如果用户改了提示词）
+    if(opts.customPrompt){
+      if(key==='__cover__'){ lastArticleData.coverPrompt = opts.customPrompt; }
+      else { const si=parseInt(key); if(lastArticleData.sections&&lastArticleData.sections[si]) lastArticleData.sections[si].imagePrompt = opts.customPrompt; }
+    }
     save();
-    if(lastArticleData){
+    if(lastArticleData && !opts.noUIRefresh){
       $('#aiOutBody').innerHTML = renderArticlePreview(lastArticleData);
       $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
     }
-    showToast('配图完成 ✓');
+    showToast(`配图完成 ✓（${prov.name}）`);
   }catch(e){
     let msg = e.message || '生成失败';
     if(/Failed to fetch|fetch|NetworkError/i.test(msg)) msg = '网络请求失败，检查图像接口地址与 Key';
@@ -1686,6 +1756,56 @@ async function genArticleImg(key, prompt){
   }finally{
     if(btn){ btn.disabled = false; btn.innerText = oldTxt || '重新配图'; }
   }
+}
+
+// 重新生成配图（从操作栏触发）
+async function regenArticleImg(key){
+  const promptEl = document.getElementById('imgPrompt_' + (key==='__cover__'?'cover':key));
+  const modelEl = document.getElementById('imgModel_' + (key==='__cover__'?'cover':key));
+  if(!promptEl){ showToast('找不到提示词输入框'); return; }
+  const customPrompt = promptEl.value.trim();
+  const providerKey = modelEl ? modelEl.value : undefined;
+  if(!customPrompt){ showToast('提示词不能为空'); promptEl.focus(); return; }
+  await genArticleImg(key, customPrompt, { providerKey, customPrompt });
+}
+
+// 删除已生成的配图
+function delArticleImg(key){
+  if(!state.lastArticleImgs || !state.lastArticleImgs[key]) return;
+  delete state.lastArticleImgs[key];
+  save();
+  if(lastArticleData){
+    $('#aiOutBody').innerHTML = renderArticlePreview(lastArticleData);
+  }
+  showToast('已删除配图，可重新生成');
+}
+
+// 切换文章编辑模式
+function toggleArticleEdit(){
+  state.articleEditing = !state.articleEditing;
+  save();
+  if(lastArticleData){
+    $('#aiOutBody').innerHTML = renderArticlePreview(lastArticleData);
+  }
+}
+
+// 保存文章顶层字段编辑
+function saveArticleField(field, value){
+  if(!lastArticleData) return;
+  lastArticleData[field] = value;
+  save();
+}
+
+// 保存章节字段编辑
+function saveArticleSection(index, field, value){
+  if(!lastArticleData || !lastArticleData.sections || !lastArticleData.sections[index]) return;
+  if(field==='keyPoints'){
+    // keyPoints 是按行编辑的，每行一个要点
+    lastArticleData.sections[index].keyPoints = value.split('\n').map(s=>s.replace(/^[-•]\s*/,'').trim()).filter(s=>s);
+  } else {
+    lastArticleData.sections[index][field] = value;
+  }
+  save();
 }
 
 // 批量为封面+所有 sections 配图
