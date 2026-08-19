@@ -76,7 +76,7 @@ svg{display:block}
 .today-item .tag{flex-shrink:0;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
 .today-item .ttl{flex:1;min-width:180px;font-size:14px}
 .today-item .meta{font-size:12px;opacity:.8}
-.today-item .act{flex-shrink:0}
+.today-item .act{flex-shrink:0;display:flex;gap:4px;align-items:center;flex-wrap:wrap}
 .today-item .btn{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.3);color:#fff}
 .today-item .btn:hover{background:rgba(255,255,255,.32)}
 .tag-od{background:var(--danger);color:#fff}
@@ -540,7 +540,7 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
     <div class="card" style="margin-top:16px">
       <h3 style="display:flex;justify-content:space-between">
         <span style="display:flex;align-items:center;gap:8px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>内容表现记录</span>
-        <button class="btn btn-sm btn-primary" onclick="openMetricModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>录入数据</button>
+        <span style="display:flex;align-items:center;gap:6px"><button class="btn btn-sm" onclick="openImportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>从后台导入</button><button class="btn btn-sm btn-primary" onclick="openMetricModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>录入数据</button></span>
       </h3>
       <div class="metric-list" id="metricList"></div>
     </div>
@@ -729,6 +729,59 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
       <div class="field"><label>发布日期</label><input type="date" class="input" id="metricDate"></div>
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveMetric()">保存记录</button>
+  </div>
+</div>
+
+<!-- ===== 排期编辑弹窗 ===== -->
+<div class="overlay" id="schedEditOv">
+  <div class="drawer">
+    <div class="drawer-head">
+      <h3>修改排期</h3>
+      <button class="btn" onclick="closeSchedEdit()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    <input type="hidden" id="schedEditId">
+    <div class="field">
+      <label>内容标题</label>
+      <input class="input" id="schedEditTitle">
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label>平台</label>
+        <select class="input" id="schedEditPlat"><option>抖音</option><option>视频号</option><option>小红书</option><option>公众号</option></select>
+      </div>
+      <div class="field">
+        <label>发布日期</label>
+        <input type="date" class="input" id="schedEditDate">
+      </div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveScheduleEdit()">保存修改</button>
+  </div>
+</div>
+
+<!-- ===== 平台数据批量导入弹窗 ===== -->
+<div class="overlay" id="importOv">
+  <div class="drawer">
+    <div class="drawer-head">
+      <h3>从平台后台批量导入数据</h3>
+      <button class="btn" onclick="closeImportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    <p class="section-tip" style="font-size:12px">打开小红书 / 公众号 / 抖音等平台的后台数据列表，<b>选中数据区域直接复制</b>（Excel 表格、网页表格均可），粘贴到下面。系统会自动识别表头（阅读/播放、点赞、评论、转发/收藏、涨粉、日期）并批量入库。"1.2万"这类格式会自动换算。</p>
+    <div class="form-row">
+      <div class="field">
+        <label>平台（表格里没有平台列时使用）</label>
+        <select class="input" id="importPlat"><option>抖音</option><option>视频号</option><option>小红书</option><option>公众号</option></select>
+      </div>
+      <div class="field">
+        <label>分类</label>
+        <select class="input" id="importCat"><option value="科普">科普</option><option value="临床招募">临床招募</option><option value="BD合作">BD合作</option><option value="前沿文献">前沿文献</option></select>
+      </div>
+    </div>
+    <div class="field">
+      <label>粘贴后台数据（每行一条，支持 Tab / 逗号 / 空格分隔）</label>
+      <textarea class="input" id="importText" rows="10" placeholder="示例一（带表头，自动识别列）：&#10;标题	阅读量	点赞	评论	分享	日期&#10;CAR-T 疗法科普	12.5万	3200	156	428	2026-08-15&#10;&#10;示例二（无表头，按 标题,阅读,点赞,评论,转发,涨粉,日期 顺序）：&#10;ADC 药物解读, 8600, 1200, 88, 240, 35, 2026-08-14"></textarea>
+    </div>
+    <div id="importPreview" style="font-size:12px;color:var(--muted);margin:8px 0;max-height:180px;overflow:auto"></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doImportMetrics()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>解析并导入</button>
   </div>
 </div>
 
@@ -924,6 +977,10 @@ function renderToday(){
   $('#todayDate').textContent = todayStr() + ' · ' + wkStr(todayStr());
   const {overdue, todayPub, soon} = todayItems();
   const list = $('#todayList');
+  const editBtn = id => `<button class="btn btn-sm" title="编辑" onclick="openEditIdea('${id}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>编辑</button>`;
+  const delIdeaBtn = id => `<button class="btn btn-sm" title="删除选题" onclick="deleteIdea('${id}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>`;
+  const editSchedBtn = id => `<button class="btn btn-sm" title="改期/改平台" onclick="openEditSchedule('${id}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>改期</button>`;
+  const delSchedBtn = id => `<button class="btn btn-sm" title="删除排期" onclick="deleteSchedule('${id}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>`;
   let html = '';
   if(!overdue.length && !todayPub.length && !soon.length){
     html = '<div class="today-empty">今天没有待办，去选题看板或 AI 工坊开动吧</div>';
@@ -933,7 +990,7 @@ function renderToday(){
       <span class="tag tag-od">逾期</span>
       <span class="ttl">${esc(i.title)}</span>
       <span class="meta">截止 ${i.dueDate}</span>
-      <span class="act"><button class="btn btn-sm" onclick="markDone('${i.id}')">标记完成</button></span>
+      <span class="act"><button class="btn btn-sm" onclick="markDone('${i.id}')">标记完成</button>${editBtn(i.id)}${delIdeaBtn(i.id)}</span>
     </div>`;
   });
   todayPub.forEach(s=>{
@@ -941,7 +998,7 @@ function renderToday(){
       <span class="tag tag-td">今天发布</span>
       <span class="ttl">${esc(s.title)}</span>
       <span class="meta">${esc(s.platform)}</span>
-      <span class="act"><button class="btn btn-sm" onclick="markPublished('${s.id}')">标记已发布</button></span>
+      <span class="act"><button class="btn btn-sm" onclick="markPublished('${s.id}')">标记已发布</button>${editSchedBtn(s.id)}${delSchedBtn(s.id)}</span>
     </div>`;
   });
   soon.forEach(i=>{
@@ -949,7 +1006,7 @@ function renderToday(){
       <span class="tag tag-so">快到期</span>
       <span class="ttl">${esc(i.title)}</span>
       <span class="meta">${i.dueDate} 到期</span>
-      <span class="act"><button class="btn btn-sm" onclick="openEditIdea('${i.id}')">查看</button></span>
+      <span class="act"><button class="btn btn-sm" onclick="openEditIdea('${i.id}')">查看</button>${editBtn(i.id)}${delIdeaBtn(i.id)}</span>
     </div>`;
   });
   list.innerHTML = html;
@@ -2512,6 +2569,7 @@ function renderSchedule(){
         <span class="st ${s.status==='published'?'st-done':'st-pending'}">${s.status==='published'?'已发布':'待发布'}</span>
         <span class="act" style="display:flex;gap:4px">
           ${s.status!=='published'?`<button class="btn btn-sm" onclick="markPublished('${s.id}')">发布</button>`:''}
+          <button class="btn btn-sm" title="编辑排期" onclick="openEditSchedule('${s.id}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
           <button class="btn btn-sm" title="删除" onclick="deleteSchedule('${s.id}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
         </span>
       </div>`;
@@ -2524,6 +2582,133 @@ function platClass(p){ return p==='抖音'?'dy':p==='视频号'?'sph':p==='小�
 function deleteSchedule(id){
   if(!confirm('删除这条排期？')) return;
   state.schedules = state.schedules.filter(x=>x.id!==id); save(); renderAll();
+}
+// 排期编辑（今日要处理 / 排期列表共用）
+function openEditSchedule(id){
+  const s = state.schedules.find(x=>x.id===id); if(!s) return;
+  $('#schedEditId').value = s.id;
+  $('#schedEditTitle').value = s.title || '';
+  $('#schedEditPlat').value = s.platform || '抖音';
+  $('#schedEditDate').value = s.publishDate || todayStr();
+  $('#schedEditOv').classList.add('show');
+}
+function closeSchedEdit(){ $('#schedEditOv').classList.remove('show') }
+function saveScheduleEdit(){
+  const id = $('#schedEditId').value;
+  const s = state.schedules.find(x=>x.id===id); if(!s) return;
+  const title = $('#schedEditTitle').value.trim();
+  const date = $('#schedEditDate').value;
+  if(!title){ showToast('请填写内容标题'); return; }
+  if(!date){ showToast('请选择发布日期'); return; }
+  s.title = title; s.platform = $('#schedEditPlat').value; s.publishDate = date;
+  save(); closeSchedEdit(); renderAll(); showToast('排期已更新 ✓');
+}
+
+/* ===== 平台后台数据批量导入 ===== */
+function openImportModal(){
+  $('#importText').value = '';
+  $('#importPreview').innerHTML = '';
+  $('#importOv').classList.add('show');
+}
+function closeImportModal(){ $('#importOv').classList.remove('show') }
+// 数字解析：去千分位逗号、"1.2万"、"3千"、百分号等
+function parseMetricNum(s){
+  if(s===undefined || s===null) return 0;
+  let t = String(s).trim().replace(/[,，\s%]/g,'');
+  if(!t) return 0;
+  let mult = 1;
+  if(/万/i.test(t)){ mult = 10000; t = t.replace(/万/i,''); }
+  else if(/千|k/i.test(t)){ mult = 1000; t = t.replace(/千|k/ig,''); }
+  const n = parseFloat(t);
+  return isNaN(n) ? 0 : Math.round(n*mult);
+}
+// 日期解析：支持 2026-08-15 / 2026/8/15 / 08-15 / 2026.08.15
+function parseMetricDate(s, fallback){
+  if(!s) return fallback;
+  const t = String(s).trim();
+  let m = t.match(/(20\d{2})[-\/.年](\d{1,2})[-\/.月](\d{1,2})/);
+  if(m) return m[1]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[3]).padStart(2,'0');
+  m = t.match(/^(\d{1,2})[-\/.](\d{1,2})$/); // 无年份 MM-DD → 当年
+  if(m){ const y = new Date().getFullYear(); return y+'-'+String(m[1]).padStart(2,'0')+'-'+String(m[2]).padStart(2,'0'); }
+  return fallback;
+}
+// 表头关键词 → 字段映射
+const METRIC_COL_RULES = [
+  {key:'title', re:/标题|内容|文章|图文|笔记|作品|视频/},
+  {key:'views', re:/阅读|播放|浏览|曝光|观看|展现/},
+  {key:'likes', re:/点赞|获赞|赞$|喜欢/},
+  {key:'comments', re:/评论|留言/},
+  {key:'shares', re:/转发|分享|收藏|转藏/},
+  {key:'follows', re:/涨粉|新增粉丝|粉丝|关注/},
+  {key:'date', re:/日期|时间|发布/},
+  {key:'platform', re:/平台|渠道|账号/}
+];
+function doImportMetrics(){
+  const raw = $('#importText').value.trim();
+  if(!raw){ showToast('请先粘贴数据'); return; }
+  const defPlat = $('#importPlat').value;
+  const defCat = $('#importCat').value;
+  const lines = raw.split(/\r?\n/).map(l=>l.replace(/\t+$/,'')).filter(l=>l.trim());
+  if(!lines.length){ showToast('没有可解析的行'); return; }
+  // 分割单元格：Tab 优先，其次逗号（中英文），最后多空格
+  const splitCells = line => {
+    if(line.includes('\t')) return line.split('\t').map(c=>c.trim());
+    if(/[,,]/.test(line)) return line.split(/[,,]/).map(c=>c.trim());
+    return line.split(/\s{1,}/).map(c=>c.trim());
+  };
+  // 判断首行是否为表头
+  const firstCells = splitCells(lines[0]);
+  const headerHits = firstCells.filter(c => METRIC_COL_RULES.some(r=>r.re.test(c))).length;
+  let colMap = null;
+  let dataLines = lines;
+  if(headerHits >= 2){
+    colMap = {};
+    firstCells.forEach((c, idx)=>{
+      for(const r of METRIC_COL_RULES){
+        if(r.re.test(c) && colMap[r.key]===undefined){ colMap[r.key] = idx; break; }
+      }
+    });
+    dataLines = lines.slice(1);
+  }else{
+    // 无表头：按 标题,阅读,点赞,评论,转发,涨粉,日期 顺序
+    colMap = {title:0, views:1, likes:2, comments:3, shares:4, follows:5, date:6};
+  }
+  const rows = [];
+  const errors = [];
+  dataLines.forEach((line, li)=>{
+    const cells = splitCells(line);
+    if(!cells.length || !cells[0]) return;
+    const get = k => (colMap[k]!==undefined && colMap[k]<cells.length) ? cells[colMap[k]] : '';
+    const title = String(get('title')||cells[0]||'').trim();
+    if(!title){ return; }
+    // 标题纯数字的行（合计行等）跳过
+    if(/^\d+(\.\d+)?$/.test(title)) return;
+    const platRaw = String(get('platform')||'').trim();
+    const platMap = {'抖音':'抖音','视频号':'视频号','小红书':'小红书','公众号':'公众号','微信公众号':'公众号','douyin':'抖音','xhs':'小红书','gzh':'公众号'};
+    let platform = defPlat;
+    for(const k in platMap){ if(platRaw.includes(k)){ platform = platMap[k]; break; } }
+    rows.push({
+      title,
+      platform,
+      category: defCat,
+      views: parseMetricNum(get('views')),
+      likes: parseMetricNum(get('likes')),
+      comments: parseMetricNum(get('comments')),
+      shares: parseMetricNum(get('shares')),
+      follows: parseMetricNum(get('follows')),
+      date: parseMetricDate(get('date'), todayStr())
+    });
+  });
+  if(!rows.length){ showToast('未解析出有效数据行，请检查格式（每行至少要有标题）'); return; }
+  // 预览确认
+  $('#importPreview').innerHTML = `<div style="color:var(--success);font-weight:600;margin-bottom:6px">已解析 ${rows.length} 条：</div>` +
+    rows.slice(0,5).map(r=>`<div style="padding:3px 0;border-bottom:1px dashed var(--border)">${esc(r.title.slice(0,24))} · ${esc(r.platform)} · 阅读${fmtNum(r.views)} 赞${fmtNum(r.likes)} 评${fmtNum(r.comments)} 转发${fmtNum(r.shares)} 涨粉${fmtNum(r.follows)} · ${r.date}</div>`).join('') +
+    (rows.length>5?`<div style="padding-top:4px">… 共 ${rows.length} 条</div>`:'');
+  // 入库
+  rows.forEach(r=> state.metrics.push(Object.assign({id:uid(), createdAt:todayStr()}, r)));
+  save(); renderAll();
+  showToast(`已导入 ${rows.length} 条数据 ✓`);
+  setTimeout(closeImportModal, 800);
 }
 
 /* ================= 数据复盘 ================= */
