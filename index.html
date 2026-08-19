@@ -1080,9 +1080,22 @@ function copyText(text){
     document.body.removeChild(ta);
   });
 }
+function getAIResultText(){
+  // 统一获取"当前 AI 生成内容"：优先内存变量，丢失时（刷新后）从 DOM 反读
+  let text = lastAIResult;
+  if(!text){
+    const body = $('#aiOutBody');
+    text = body ? (body.innerText || body.textContent || '') : '';
+    text = text.trim();
+    // 过滤初始占位文字
+    if(text.indexOf('即可调用 AI 大模型')>-1 || text.indexOf('选择内容类型')>-1) text = '';
+  }
+  return text;
+}
 function copyAIResult(){
-  if(!lastAIResult){ showToast('暂无内容'); return; }
-  copyText(lastAIResult);
+  const text = getAIResultText();
+  if(!text){ showToast('暂无内容，请先点「生成内容」'); return; }
+  copyText(text);
 }
 const HASHTAGS = {
   '科普': ['生物医药','新药研发','健康科普','医学科普','知识分享'],
@@ -1098,33 +1111,25 @@ function buildHashtags(cat, plat){
   return tags.map(t=>'#'+t).join(' ');
 }
 function packPublishText(){
-  if(!lastAIResult){ showToast('请先生成内容'); return; }
+  const text = getAIResultText();
+  if(!text){ showToast('暂无内容，请先点「生成内容」'); return; }
   const cat = $('#aiCat').value;
   const plat = $('#aiPlat').value;
   const tags = buildHashtags(cat, plat);
-  let text;
+  let out;
   if(curGenType==='videogen'){
     const topic = $('#aiTopic').value.trim() || 'AI 生成视频';
-    text = topic + '\n\n' + tags + '\n\n' + lastAIResult;
+    out = topic + '\n\n' + tags + '\n\n' + text;
   }else{
-    text = lastAIResult.trim() + '\n\n' + tags;
+    out = text.trim() + '\n\n' + tags;
   }
-  if(plat==='小红书') text += '\n\n小贴士：配 3-4 张图更易爆，首图加标题字';
-  copyText(text);
+  if(plat==='小红书') out += '\n\n小贴士：配 3-4 张图更易爆，首图加标题字';
+  copyText(out);
   showToast('发布文案已打包复制，去 '+plat+' 粘贴即可');
 }
 function saveAIAsIdea(){
   try{
-    // 后备机制：如果 lastAIResult 内存变量丢失（页面刷新/重新加载后），
-    // 从 aiOutBody DOM 反读纯文本，保证按钮任何时候都能工作
-    let text = lastAIResult;
-    if(!text){
-      const body = $('#aiOutBody');
-      text = body ? (body.innerText || body.textContent || '') : '';
-      text = text.trim();
-      // 过滤掉初始占位文字
-      if(text.indexOf('即可调用 AI 大模型')>-1) text = '';
-    }
+    const text = getAIResultText();
     if(!text){ showToast('暂无内容，请先点「生成内容」'); return; }
     const topic = $('#aiTopic').value.trim() || 'AI 生成内容';
     const cat = $('#aiCat').value;
