@@ -1713,6 +1713,7 @@ async function retryArticleWithStrict(){
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 // ==== 视频创作：三步流程 ====
 let videoScriptData = []; // {timeStart, timeEnd, scene, narration, prompt}
+let _lastScriptRaw = ''; // 最近一次脚本生成模型的原始输出（失败时供诊断）
 let voiceUtterance = null;
 
 // 把简短想法扩展为详细创意描述
@@ -1750,32 +1751,37 @@ async function polishVideoIdea(){
 }
 
 // 基于完善后的创意生成分镜脚本
-async function generateVideoScript(){
+async function generateVideoScript(opts){
+  opts = opts || {};
   const polished = ($('#videoPolished').value || '').trim();
   if(!polished){ showToast('请先完善创意（②）'); return; }
   const prov = PROVIDERS.find(p=>p.key===state.aiConfig.provider) || PROVIDERS[0];
   if(!curAccount().apiKey){ showToast('请先在 AI 设置里填写 '+prov.name+' 的 API Key'); openSettings(); return; }
   const duration = +$('#videoDuration').value || 10;
-  // 估算分镜数：每镜 2-3 秒，总 3-6 镜
   const sceneCount = Math.max(3, Math.min(6, Math.round(duration / 2.5)));
   const btn = $('#videoScriptBtn');
   const oldHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px"></span>生成中…';
   showToast('AI 正在分镜（约 10-20 秒）…');
+  const strictHint = opts.strict
+    ? '\n\n【硬性要求】你只能输出一个 JSON 数组（最外层必须是 [ ]，不是 { }）。如果思考必须放在 <think></think> 里，但数组外禁止任何 markdown/前言/解释/代码块外的文字。'
+    : '\n\n只输出 \`\`\`json 代码块，禁止任何其他文字。';
   try{
     const messages = [
-      {role:'system', content:'你是生物医药短视频分镜师。擅长把创意拆成时间轴清晰、镜头明确的分镜脚本，输出严格 JSON。'},
-      {role:'user', content:`完善创意：${polished}\n视频总时长：${duration}秒\n\n请拆成 ${sceneCount} 个分镜（首尾相接覆盖总时长），输出严格 JSON，字段说明：\n[\n  {\n    "timeStart": "00:00",\n    "timeEnd": "00:03",\n    "scene": "本镜画面描述（10-30字）",\n    "narration": "本镜旁白（口播一句，15-30字，通俗有节奏）",\n    "prompt": "本镜给 AI 视频模型的英文 prompt（10-25字，含主体+运镜+风格）"\n  }\n]\n\n只输出 \`\`\`json 代码块，禁止任何其他文字。`}
+      {role:'system', content:'你是生物医药短视频分镜师。擅长把创意拆成时间轴清晰、镜头明确的分镜脚本，输出严格 JSON 数组。'},
+      {role:'user', content:`完善创意：${polished}\n视频总时长：${duration}秒\n\n请拆成 ${sceneCount} 个分镜（首尾相接覆盖总时长），输出严格 JSON 数组，字段说明：\n[\n  {\n    "timeStart": "00:00",\n    "timeEnd": "00:03",\n    "scene": "本镜画面描述（10-30字）",\n    "narration": "本镜旁白（口播一句，15-30字，通俗有节奏）",\n    "prompt": "本镜给 AI 视频模型的英文 prompt（10-25字，含主体+运镜+风格）"\n  }\n]\n\n最外层必须是数组 [ ]，不是对象 { }。${strictHint}`}
     ];
     const text = await callLLM(messages, {maxTokens: 1500, temperature: 0.8, useJsonFormat: true});
     if(!text) throw new Error('返回内容为空');
-    const data = parseArticleJSON(text) || parseGenericJSON(text);
+    _lastScriptRaw = text; // 失败时给用户看原始输出
+    const data = parseScriptJSON(text);
     let scenes = null;
     if(Array.isArray(data)) scenes = data;
     else if(data && Array.isArray(data.scenes)) scenes = data.scenes;
     else if(data && Array.isArray(data.shots)) scenes = data.shots;
     if(!scenes) throw new Error('未解析出分镜数组');
+    if(!scenes.length) throw new Error('分镜数组为空');
     // 时间戳校正
     let cursor = 0;
     const per = duration / scenes.length;
@@ -1793,11 +1799,52 @@ async function generateVideoScript(){
   }catch(e){
     let msg = e.message || '生成失败';
     if(/NO_KEY/.test(msg)){ showToast('请先填写 API Key'); openSettings(); return; }
+    // 把模型原始输出贴到脚本区下方，方便用户诊断
+    const list = $('#videoScriptList');
+    if(list){
+      const lastText = (typeof _lastScriptRaw === 'string') ? _lastScriptRaw : '';
+      list.innerHTML = `<div style="border:1px solid var(--danger-soft);background:#FFF5F5;border-radius:10px;padding:12px;color:var(--danger)">
+        <div style="font-weight:700;margin-bottom:6px">✗ 脚本生成失败：${esc(msg)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">可能原因：①模型只输出思考内容未生成 JSON ②输出包含 markdown 标题/前言未严格遵循 JSON ③max_tokens 不足。建议在 AI 设置换 GPT-4o / Claude Sonnet / 智谱 glm-4.7 等严格遵循 JSON 的模型，或点下方"用更强指令重试"。</div>
+        ${lastText ? `<details style="font-size:12px"><summary style="cursor:pointer;color:var(--muted)">查看模型原始输出（前 800 字符）</summary><pre style="background:#fff;padding:8px;border-radius:6px;margin-top:6px;max-height:240px;overflow:auto;white-space:pre-wrap">${esc(lastText.slice(0,800))}</pre></details>` : ''}
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-sm" onclick="regenVideoScript()">🔁 用更强指令重试</button>
+        </div>
+      </div>`;
+    }
     showToast('脚本生成失败：'+msg);
   }finally{
     btn.disabled = false;
     btn.innerHTML = oldHtml;
   }
+}
+// 鲁棒的分镜 JSON 解析：处理 think 块 + 思考发言 + 多种包装
+function parseScriptJSON(text){
+  if(!text) return null;
+  // 1) 剥掉 <think>...</think> 块
+  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
+  if(!cleaned) cleaned = text.trim();
+  // 2) 剥掉开篇的"思考发言"（>30 字符才出现首个 [ 或 { 时砍掉前文）
+  if(!/^\s*[\[{]/.test(cleaned)){
+    const firstJson = cleaned.search(/```json|```javascript|\[|\{/);
+    if(firstJson > 30) cleaned = cleaned.slice(firstJson).trim();
+  }
+  // 3) 优先 ```json ... ``` 代码块
+  const m = cleaned.match(/```(?:json|javascript)?\s*([\s\S]*?)```/i);
+  if(m){
+    try{ return JSON.parse(m[1].trim()); }catch(e){}
+  }
+  // 4) 整体就是 JSON
+  try{ return JSON.parse(cleaned.trim()); }catch(e){}
+  // 5) 大括号/中括号配对扫描：找第一个完整的数组或 {scenes:[]} / {shots:[]}
+  const tries = [/\[[\s\S]*?\]/, /\{[\s\S]*?\}/];
+  for(const re of tries){
+    const m2 = cleaned.match(re);
+    if(m2){
+      try{ return JSON.parse(m2[0]); }catch(e){}
+    }
+  }
+  return null;
 }
 function parseGenericJSON(text){
   const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -1828,7 +1875,10 @@ function renderVideoScript(){
   `).join('');
 }
 function delVideoScene(i){ videoScriptData.splice(i,1); renderVideoScript(); }
-function regenVideoScript(){ generateVideoScript(); }
+function regenVideoScript(){
+  // 用更强指令：在 user 消息里追加"必须只输出 JSON 数组"
+  generateVideoScript({strict: true});
+}
 function copyVideoScript(){
   if(!videoScriptData.length){ showToast('没有可复制的脚本'); return; }
   const txt = videoScriptData.map((s,i)=>`第 ${i+1} 镜  [${s.timeStart} → ${s.timeEnd}]\n画面：${s.scene}\n旁白：${s.narration}\nPrompt：${s.prompt}`).join('\n\n');
