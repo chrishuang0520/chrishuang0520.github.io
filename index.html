@@ -133,6 +133,7 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
 .paper-item .pj-abstract{font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .paper-item .pj-actions{display:flex;gap:8px;flex-wrap:wrap}
 .paper-empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px}
+.pj-summary{margin-top:10px;padding:12px 14px;background:#fff;border:1px solid var(--border);border-radius:10px;font-size:13.5px;line-height:1.8;white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto;color:#2c3e50}
 .chip-plat{background:#EEF2F1;color:var(--muted)}
 .chip-p0{background:var(--danger-soft);color:var(--danger)}
 .chip-p1{background:var(--warning-soft);color:var(--warning)}
@@ -339,11 +340,19 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
           顶刊文献追踪 · 前沿肿瘤药物
         </div>
-        <button class="btn btn-primary" onclick="searchPapers()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>搜索本周顶刊论文</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select class="input" id="paperRange" style="width:auto;padding:6px 10px;font-size:13px">
+            <option value="7">近 7 天</option>
+            <option value="30">近 1 个月</option>
+            <option value="90">近 3 个月</option>
+            <option value="365" selected>近 1 年</option>
+          </select>
+          <button class="btn btn-primary" onclick="searchPapers()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>搜索顶刊论文</button>
+        </div>
       </div>
       <div class="paper-journals" id="paperJournals"></div>
       <div class="paper-list" id="paperList">
-        <div class="paper-empty">点击「搜索本周顶刊论文」，自动检索近 7 天 Nature / Science / Cell / NEJM / Lancet / Nat Med 上肿瘤药物研发与临床数据的最新论文，最多 5 篇。</div>
+        <div class="paper-empty">选择时间范围（默认近 1 年）→ 点「搜索顶刊论文」，自动检索 Nature / Science / Cell / NEJM / Lancet / Nat Med 上肿瘤药物研发与临床数据的最新论文（最多 5 篇）。搜到后可点「生成中文要点摘要」由 AI 提炼论点/论据/亮点。</div>
       </div>
     </div>
     <div class="kanban" id="kanban"></div>
@@ -915,11 +924,10 @@ function toggleJournal(key){
 
 async function searchPapers(){
   if(selectedJournals.length===0){ showToast('请至少勾选一种期刊'); return; }
-  const btn = $('#paperList');
-  btn.innerHTML = '<div class="paper-empty">正在检索 PubMed…（约 3-8 秒）<br><span class="spinner" style="margin:12px auto"></span></div>';
-  // 日期：最近 7 天
+  const rangeDays = parseInt($('#paperRange').value||'365', 10);
+  $('#paperList').innerHTML = '<div class="paper-empty">正在检索 PubMed…（约 3-8 秒）<br><span class="spinner" style="margin:12px auto"></span></div>';
   const end = new Date();
-  const start = addDays(end, -7);
+  const start = addDays(end, -rangeDays);
   const mindate = fmtDate(start).replace(/-/g,'/');
   const maxdate = fmtDate(end).replace(/-/g,'/');
   // 主题：肿瘤药物研发 + 临床数据
@@ -936,7 +944,7 @@ async function searchPapers(){
     const esData = await esRes.json().catch(()=>({}));
     const ids = (esData.esearchresult && esData.esearchresult.idlist) || [];
     if(ids.length===0){
-      $('#paperList').innerHTML = '<div class="paper-empty">近 7 天所选顶刊未检索到匹配论文（可能近期无相关发表，或网络受限）。可放宽关键词或换期刊再试。</div>';
+      $('#paperList').innerHTML = '<div class="paper-empty">所选时间范围内未检索到匹配论文（可放宽关键词、扩大时间范围或换期刊再试）。</div>';
       return;
     }
     // 2. esummary 拿详情
@@ -944,6 +952,25 @@ async function searchPapers(){
     const suRes = await fetch(suUrl);
     const suData = await suRes.json().catch(()=>({}));
     const result = suData.result || {};
+    // 3. efetch 拿英文摘要
+    const absMap = {};
+    try{
+      const efUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=' + ids.join(',') + '&retmode=xml';
+      const efRes = await fetch(efUrl);
+      const xmlText = await efRes.text();
+      const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+      const arts = doc.querySelectorAll('PubmedArticle');
+      arts.forEach(art=>{
+        const pmid = art.querySelector('PMID')?.textContent || '';
+        const absTexts = art.querySelectorAll('AbstractText');
+        let abs = '';
+        absTexts.forEach(t=>{
+          const label = t.getAttribute('Label');
+          abs += (label ? '['+label+'] ' : '') + (t.textContent||'').trim() + ' ';
+        });
+        if(pmid) absMap[pmid] = abs.trim();
+      });
+    }catch(e){ /* 摘要抓取失败不阻断主流程 */ }
     lastPapers = ids.map(id=>{
       const r = result[id] || {};
       const doi = (r.articleids||[]).find(a=>a.idtype==='doi');
@@ -952,7 +979,9 @@ async function searchPapers(){
         title: r.title || '(无标题)',
         journal: r.source || '',
         date: r.pubdate || '',
-        doi: doi ? doi.value : ''
+        doi: doi ? doi.value : '',
+        abstract: absMap[id] || '',
+        summary: ''
       };
     }).filter(p=>p.title!=='(无标题)');
     renderPapers();
@@ -969,30 +998,65 @@ function renderPapers(){
     el.innerHTML = '<div class="paper-empty">未检索到有效结果，请重试。</div>';
     return;
   }
-  el.innerHTML = lastPapers.map((p,i)=>
-    `<div class="paper-item">
+  el.innerHTML = lastPapers.map((p,i)=>{
+    const hasAbs = !!(p.abstract);
+    const sumBlock = p.summary
+      ? `<div class="pj-summary">${p.summary}</div>`
+      : (hasAbs
+          ? `<div class="pj-actions" style="margin-top:6px"><button class="btn btn-sm btn-primary" onclick="genPaperSummary(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>生成中文要点摘要（AI）</button></div>`
+          : `<div class="pj-meta" style="color:var(--warning)">⚠ 该文暂无摘要可提取，可直接点 PubMed 原文查看后创作。</div>`);
+    return `<div class="paper-item">
       <span class="pj-tag">${esc(p.journal||'顶刊')}</span>
       <div class="pj-title">${esc(p.title)}</div>
       <div class="pj-meta">${esc(p.date)} · PMID: ${esc(p.pmid)}${p.doi?' · DOI: '+esc(p.doi):''}</div>
+      ${sumBlock}
       <div class="pj-actions">
-        <button class="btn btn-sm btn-primary" onclick="pickPaperAsIdea(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>选为选题</button>
-        <a class="btn btn-sm" href="https://pubmed.ncbi.nlm.nih.gov/${esc(p.pmid)}/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>PubMed 原文</a>
+        <button class="btn btn-sm btn-primary" onclick="createArticleFromPaper(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>选此篇创作图文</button>
+        <a class="btn btn-sm" href="https://pubmed.ncbi.nlm.nih.gov/${esc(p.pmid)}/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>原文</a>
       </div>
-    </div>`
-  ).join('');
+    </div>`;
+  }).join('');
 }
 
-function pickPaperAsIdea(index){
+async function genPaperSummary(index){
+  const p = lastPapers[index];
+  if(!p || !p.abstract){ showToast('该论文无摘要可提炼'); return; }
+  const prov = PROVIDERS.find(x=>x.key===state.aiConfig.provider) || PROVIDERS[0];
+  if(!curAccount().apiKey){ showToast('请先在 AI 设置里填写 '+prov.name+' 的 API Key'); openSettings(); return; }
+  showToast('正在生成中文要点摘要（约 20-60 秒）…');
+  const sys = '你是肿瘤药物研发领域的资深医学编辑。请基于论文英文摘要，撰写一篇约 2000 字的中文要点摘要，供内容创作者参考。' +
+    '要求：①严格基于摘要原文，不编造具体数据/结论；可补充必要的领域背景知识（标注为"背景"）；②结构清晰，包含【研究论点】【核心论据】【研究亮点/创新点】【临床意义/局限】四部分；③专业术语首次出现附通俗解释；④文末附原文出处。';
+  const user = `论文标题：${p.title}\n期刊：${p.journal}\n发表日期：${p.date}\nDOI：${p.doi}\nPMID：${p.pmid}\n\n英文摘要：\n${p.abstract}\n\n请按上述要求输出约 2000 字中文要点摘要。`;
+  try{
+    const text = await callLLM([{role:'system',content:sys},{role:'user',content:user}], {maxTokens:3000, temperature:0.6});
+    p.summary = text;
+    renderPapers();
+    showToast('摘要已生成 ✓');
+  }catch(e){
+    let msg = e.message || '生成失败';
+    if(/NO_KEY/.test(msg)){ showToast('请先填写 API Key'); openSettings(); return; }
+    if(/Failed to fetch|fetch|NetworkError/i.test(msg)) msg = '网络请求失败，请检查接口地址与网络';
+    if(/1004|authorization|unauthorized|invalid api key|authentication|401|403/i.test(msg)) msg = 'API Key 无效，请点齿轮检查';
+    showToast('摘要生成失败：'+msg);
+  }
+}
+
+function createArticleFromPaper(index){
   const p = lastPapers[index];
   if(!p){ showToast('论文数据缺失'); return; }
-  const title = p.title.slice(0,80);
-  const note = `顶刊文献：${p.journal||''} ${p.date||''} · PMID:${p.pmid}` + (p.doi?` · DOI:${p.doi}`:'') + ' · 详见 PubMed 原文';
-  state.ideas.push({
-    id:uid(), title: title, category:'前沿文献', platforms:['公众号'],
-    priority:'P1', status:'inspiration', dueDate:'', note: note, createdAt:todayStr(), updatedAt:todayStr()
-  });
-  save(); renderAll(); switchTab('ideas');
-  showToast('已存入选题「灵感」列（分类：前沿文献）');
+  // 带着论文标题 + 摘要跳转到 AI 工坊公众号图文
+  const title = p.title.slice(0,120);
+  const context = (p.summary ? '【论文中文要点摘要】\n' + p.summary + '\n\n' : '') +
+    `【论文原文信息】\n标题：${p.title}\n期刊：${p.journal} · ${p.date}\nDOI：${p.doi}\nPMID：${p.pmid}` +
+    (p.abstract && !p.summary ? '\n\n【英文摘要】\n' + p.abstract : '');
+  switchTab('ai');
+  setGenType('article');
+  $('#aiTopic').value = title;
+  $('#aiCat').value = '前沿文献';
+  $('#aiPlat').value = '公众号';
+  $('#aiExtra').value = context.slice(0, 4000);
+  updateAIPanel();
+  showToast('已带入论文信息，请点「生成内容」创作图文');
 }
 
 /* ================= 选题看板 ================= */
@@ -1187,6 +1251,36 @@ function buildPrompt(){
     ]
   };
 }
+async function callLLM(messages, opts){
+  opts = opts || {};
+  const prov = PROVIDERS.find(p=>p.key===state.aiConfig.provider) || PROVIDERS[0];
+  const acct = curAccount();
+  if(!acct.apiKey){ throw new Error('NO_KEY:'+prov.name); }
+  const base = (acct.baseUrl||prov.baseUrl).replace(/\/+$/,'');
+  const maxTokens = opts.maxTokens || 2600;
+  const temperature = (opts.temperature !== undefined) ? opts.temperature : 0.85;
+  if(prov.api==='anthropic'){
+    const systemMsg = messages.find(m=>m.role==='system')?.content || '';
+    const userMsgs = messages.filter(m=>m.role!=='system').map(m=>({role:m.role, content:m.content}));
+    const res = await fetch(base + '/v1/messages', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-api-key':acct.apiKey, 'anthropic-version':'2023-06-01' },
+      body: JSON.stringify({ model: acct.model||prov.model, system: systemMsg, messages: userMsgs, max_tokens: maxTokens })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || !data.content){ throw new Error(data.error?.message || ('请求失败 HTTP '+res.status)); }
+    return (data.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('') || '';
+  }else{
+    const res = await fetch(base + '/chat/completions', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+acct.apiKey },
+      body: JSON.stringify({ model: acct.model||prov.model, messages, temperature, max_tokens: maxTokens, stream:false })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || !data.choices || !data.choices[0]){ throw new Error(data.error?.message || ('请求失败 HTTP '+res.status)); }
+    return data.choices[0].message.content || '';
+  }
+}
 async function generate(){
   if(curGenType==='videogen'){ return generateVideo(); }
   const prov = PROVIDERS.find(p=>p.key===state.aiConfig.provider) || PROVIDERS[0];
@@ -1202,36 +1296,15 @@ async function generate(){
   $('#aiCopyBtn').style.display='none'; $('#aiSaveBtn').style.display='none'; $('#aiPackBtn').style.display='none';
 
   const {messages} = buildPrompt();
-  const base = (acct.baseUrl||prov.baseUrl).replace(/\/+$/,'');
   try{
-    let text = '';
-    if(prov.api==='anthropic'){
-      const systemMsg = messages.find(m=>m.role==='system')?.content || '';
-      const userMsgs = messages.filter(m=>m.role!=='system').map(m=>({role:m.role, content:m.content}));
-      const res = await fetch(base + '/v1/messages', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', 'x-api-key':acct.apiKey, 'anthropic-version':'2023-06-01' },
-        body: JSON.stringify({ model: acct.model||prov.model, system: systemMsg, messages: userMsgs, max_tokens: 2600 })
-      });
-      const data = await res.json().catch(()=>({}));
-      if(!res.ok || !data.content){ throw new Error(data.error?.message || ('请求失败 HTTP '+res.status)); }
-      text = (data.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('') || '';
-    }else{
-      const res = await fetch(base + '/chat/completions', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+acct.apiKey },
-        body: JSON.stringify({ model: acct.model||prov.model, messages, temperature:0.85, max_tokens: 2600, stream:false })
-      });
-      const data = await res.json().catch(()=>({}));
-      if(!res.ok || !data.choices || !data.choices[0]){ throw new Error(data.error?.message || ('请求失败 HTTP '+res.status)); }
-      text = data.choices[0].message.content || '';
-    }
+    const text = await callLLM(messages);
     if(!text){ throw new Error('返回内容为空'); }
     lastAIResult = text;
     renderAIResult(lastAIResult);
     showToast('生成完成');
   }catch(e){
     let msg = e.message || '生成失败';
+    if(/NO_KEY/.test(msg)){ showToast('请先填写 API Key'); openSettings(); return; }
     if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败，请检查接口地址与网络';
     if(/1004|authorization|unauthorized|invalid api key|authentication|401|403|login fail/i.test(msg)){
       msg = 'API Key 无效或缺失 — 点右上角齿轮，确认 Key 完整（sk- 开头、无空格）、且与所选模型匹配';
