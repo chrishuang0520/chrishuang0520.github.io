@@ -754,11 +754,18 @@ function load(){
     if(!c.image.apiKey) c.image.apiKey = c.mediaKey;
   }
   if(c.mediaKey) delete c.mediaKey; // 清理旧字段
-  // 默认图像 provider 切到 minimax_img（如果用户没设过）
+  // 默认图像 provider 切到 minimax_img（如果用户没设过）；修正 baseUrl/model 同步（这是关键修复，之前用 || 保留了 OpenAI 的旧 URL）
   if(c.image && (c.image.provider==='openai_img' || !c.image.provider) && !c.image.apiKey){
     c.image.provider = 'minimax_img';
-    c.image.baseUrl = c.image.baseUrl || 'https://api.minimaxi.com/v1';
-    c.image.model = c.image.model || 'image-01';
+  }
+  // 兜底：provider 是 minimax_img 但 baseUrl 仍是 openai 或其它不一致的值，强制同步
+  if(c.image && c.image.provider==='minimax_img'){
+    if(!c.image.baseUrl || c.image.baseUrl.indexOf('openai.com')>-1 || c.image.baseUrl.indexOf('openai_')>-1){
+      c.image.baseUrl = 'https://api.minimaxi.com/v1';
+    }
+    if(!c.image.model || c.image.model==='gpt-image-1' || c.image.model==='dall-e-3'){
+      c.image.model = 'image-01';
+    }
   }
   state.aiConfig = c;
   state.sync = Object.assign({enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'}, state.sync||{});
