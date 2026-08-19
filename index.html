@@ -448,7 +448,11 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
     </div>
     <div class="field">
       <label>API Key</label>
-      <input class="input" id="cfgKey" type="password" placeholder="sk-...">
+      <div style="display:flex;gap:8px">
+        <input class="input" id="cfgKey" type="password" placeholder="sk-..." style="flex:1">
+        <button class="btn btn-sm" id="testKeyBtn" onclick="testKey()" style="white-space:nowrap;flex-shrink:0">检测 Key</button>
+      </div>
+      <div id="testKeyResult" style="font-size:12px;margin-top:6px;min-height:16px"></div>
     </div>
     <div class="field">
       <label>接口地址 Base URL</label>
@@ -1181,6 +1185,45 @@ function onCfgModelChange(){
   $('#cfgModelCustom').style.display = v==='__custom__'?'':'none';
 }
 function closeSettings(){ $('#settingsOv').classList.remove('show') }
+function testKey(){
+  const key = $('#cfgKey').value.trim();
+  const p = PROVIDERS.find(x=>x.key===$('#cfgProvider').value) || PROVIDERS[0];
+  const base = $('#cfgBase').value.trim() || p.baseUrl;
+  const model = $('#cfgModel').value;
+  const resultEl = $('#testKeyResult');
+  if(!key){ resultEl.innerHTML = '<span style="color:var(--danger)">请先填写 API Key</span>'; return; }
+  resultEl.innerHTML = '<span style="color:var(--warning)">检测中…</span>';
+  (async()=>{
+    try{
+      const b = base.replace(/\/+$/,'');
+      let res;
+      if(p.api==='anthropic'){
+        res = await fetch(b+'/v1/messages', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+          body: JSON.stringify({model: model||p.model, max_tokens:1, messages:[{role:'user',content:'hi'}]})
+        });
+      }else{
+        res = await fetch(b+'/chat/completions', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+          body: JSON.stringify({model: model||p.model, messages:[{role:'user',content:'hi'}], max_tokens:1})
+        });
+      }
+      if(res.ok){
+        resultEl.innerHTML = '<span style="color:var(--success)">Key 有效，可以正常使用</span>';
+      }else{
+        const d = await res.json().catch(()=>({}));
+        const em = d.error?.message || ('HTTP '+res.status);
+        resultEl.innerHTML = '<span style="color:var(--danger)">Key 无效：'+esc(em)+'</span>';
+      }
+    }catch(e){
+      let em = e.message||'请求失败';
+      if(/Failed to fetch|NetworkError/i.test(em)) em = '网络请求失败，请检查接口地址';
+      resultEl.innerHTML = '<span style="color:var(--danger)">检测失败：'+esc(em)+'</span>';
+    }
+  })();
+}
 function saveSettings(){
   const p = PROVIDERS.find(x=>x.key===$('#cfgProvider').value) || PROVIDERS[0];
   let m = $('#cfgModel').value;
