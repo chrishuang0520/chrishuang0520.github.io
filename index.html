@@ -116,6 +116,23 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
 .chip-cat-kp{background:var(--cyan-soft);color:var(--accent)}
 .chip-cat-lc{background:var(--warning-soft);color:var(--warning)}
 .chip-cat-bd{background:var(--violet-soft);color:var(--violet)}
+.chip-cat-paper{background:var(--success-soft);color:var(--success)}
+/* ===== 顶刊文献追踪 ===== */
+.paper-tracker{margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.paper-tracker-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.paper-tracker-head .pt-title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700}
+.paper-tracker-head .pt-title svg{width:20px;height:20px;color:var(--primary)}
+.paper-journals{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 12px}
+.paper-journals .pj{font-size:12px;padding:3px 10px;border-radius:14px;border:1px solid var(--border);color:var(--muted);background:var(--bg);cursor:pointer;user-select:none}
+.paper-journals .pj.on{background:var(--primary-soft);color:var(--primary-dark);border-color:var(--primary)}
+.paper-list{padding:0 16px 8px}
+.paper-item{border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--bg)}
+.paper-item .pj-tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--primary-soft);color:var(--primary-dark);margin-bottom:6px}
+.paper-item .pj-title{font-size:14.5px;font-weight:600;line-height:1.5;margin-bottom:6px}
+.paper-item .pj-meta{font-size:12px;color:var(--muted);margin-bottom:4px;line-height:1.6}
+.paper-item .pj-abstract{font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.paper-item .pj-actions{display:flex;gap:8px;flex-wrap:wrap}
+.paper-empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px}
 .chip-plat{background:#EEF2F1;color:var(--muted)}
 .chip-p0{background:var(--danger-soft);color:var(--danger)}
 .chip-p1{background:var(--warning-soft);color:var(--warning)}
@@ -316,6 +333,19 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
       <p class="section-tip">看板三列流转：灵感 → 创作中 → 已发布。点击卡片下方按钮移动状态。</p>
       <button class="btn btn-primary" onclick="openIdeaModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>新增选题</button>
     </div>
+    <div class="paper-tracker">
+      <div class="paper-tracker-head">
+        <div class="pt-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          顶刊文献追踪 · 前沿肿瘤药物
+        </div>
+        <button class="btn btn-primary" onclick="searchPapers()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>搜索本周顶刊论文</button>
+      </div>
+      <div class="paper-journals" id="paperJournals"></div>
+      <div class="paper-list" id="paperList">
+        <div class="paper-empty">点击「搜索本周顶刊论文」，自动检索近 7 天 Nature / Science / Cell / NEJM / Lancet / Nat Med 上肿瘤药物研发与临床数据的最新论文，最多 5 篇。</div>
+      </div>
+    </div>
     <div class="kanban" id="kanban"></div>
   </section>
 
@@ -368,6 +398,7 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
               <option value="科普">科普 · 研发知识</option>
               <option value="临床招募">临床招募</option>
               <option value="BD合作">BD 合作</option>
+              <option value="前沿文献">前沿文献</option>
             </select>
           </div>
           <div class="field">
@@ -380,6 +411,12 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
         <div class="field" id="extraField">
           <label>补充要求（可选）</label>
           <textarea class="input" id="aiExtra" placeholder="例如：目标受众是患者家属，语气亲切一些"></textarea>
+        </div>
+        <div class="field" id="strictField" style="display:none">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="articleStrict" onchange="onArticleStrict()" style="width:18px;height:18px;flex-shrink:0">
+            <span>公众号专用提示词预设（强制输出 JSON，兼容 MiniMax 等自由模型）</span>
+          </label>
         </div>
         <button class="btn btn-primary" style="width:100%;justify-content:center" id="aiGenBtn" onclick="generate()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg><span id="aiGenBtnText">生成内容</span>
@@ -580,6 +617,7 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
           <option value="科普">科普 · 研发知识</option>
           <option value="临床招募">临床招募</option>
           <option value="BD合作">BD 合作</option>
+          <option value="前沿文献">前沿文献</option>
         </select>
       </div>
       <div class="field">
@@ -851,9 +889,115 @@ function markPublished(id){
   renderAll(); showToast('已标记发布');
 }
 
+/* ================= 顶刊文献追踪 ================= */
+const PAPER_JOURNALS = [
+  {key:'nature', label:'Nature', jq:'"Nature"[Journal]'},
+  {key:'science', label:'Science', jq:'"Science"[Journal]'},
+  {key:'cell', label:'Cell', jq:'"Cell"[Journal]'},
+  {key:'nejm', label:'NEJM', jq:'"N Engl J Med"[Journal]'},
+  {key:'lancet', label:'Lancet', jq:'"Lancet"[Journal]'},
+  {key:'natmed', label:'Nat Med', jq:'"Nat Med"[Journal]'}
+];
+let selectedJournals = PAPER_JOURNALS.map(j=>j.key);
+let lastPapers = []; // 最近一次搜索结果，供 pickPaperAsIdea 引用
+
+function renderPaperJournals(){
+  const el = $('#paperJournals'); if(!el) return;
+  el.innerHTML = PAPER_JOURNALS.map(j=>
+    `<span class="pj ${selectedJournals.includes(j.key)?'on':''}" onclick="toggleJournal('${j.key}')">${j.label}</span>`
+  ).join('');
+}
+function toggleJournal(key){
+  const i = selectedJournals.indexOf(key);
+  if(i>-1) selectedJournals.splice(i,1); else selectedJournals.push(key);
+  renderPaperJournals();
+}
+
+async function searchPapers(){
+  if(selectedJournals.length===0){ showToast('请至少勾选一种期刊'); return; }
+  const btn = $('#paperList');
+  btn.innerHTML = '<div class="paper-empty">正在检索 PubMed…（约 3-8 秒）<br><span class="spinner" style="margin:12px auto"></span></div>';
+  // 日期：最近 7 天
+  const end = new Date();
+  const start = addDays(end, -7);
+  const mindate = fmtDate(start).replace(/-/g,'/');
+  const maxdate = fmtDate(end).replace(/-/g,'/');
+  // 主题：肿瘤药物研发 + 临床数据
+  const topic = '(cancer[tiab] OR tumor[tiab] OR tumour[tiab] OR oncology[tiab] OR neoplasm[tiab] OR carcinoma[tiab])' +
+    ' AND (drug[tiab] OR therapy[tiab] OR treatment[tiab] OR "clinical trial"[tiab] OR immunotherapy[tiab] OR inhibitor[tiab] OR antibody[tiab] OR "antibody-drug conjugate"[tiab] OR ADC[tiab] OR "small molecule"[tiab] OR efficacy[tiab] OR "overall survival"[tiab] OR "progression-free survival"[tiab] OR "phase 2"[tiab] OR "phase 3"[tiab] OR "phase II"[tiab] OR "phase III"[tiab])';
+  const journals = selectedJournals.map(k=>{ const j=PAPER_JOURNALS.find(x=>x.key===k); return j?j.jq:''; }).filter(Boolean).join(' OR ');
+  const term = topic + ' AND (' + journals + ')';
+
+  try{
+    // 1. esearch 拿 PMID 列表
+    const esUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=' + encodeURIComponent(term) +
+      '&retmax=5&sort=pub_date&retmode=json&mindate=' + mindate + '&maxdate=' + maxdate + '&datetype=pdat';
+    const esRes = await fetch(esUrl);
+    const esData = await esRes.json().catch(()=>({}));
+    const ids = (esData.esearchresult && esData.esearchresult.idlist) || [];
+    if(ids.length===0){
+      $('#paperList').innerHTML = '<div class="paper-empty">近 7 天所选顶刊未检索到匹配论文（可能近期无相关发表，或网络受限）。可放宽关键词或换期刊再试。</div>';
+      return;
+    }
+    // 2. esummary 拿详情
+    const suUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=' + ids.join(',') + '&retmode=json';
+    const suRes = await fetch(suUrl);
+    const suData = await suRes.json().catch(()=>({}));
+    const result = suData.result || {};
+    lastPapers = ids.map(id=>{
+      const r = result[id] || {};
+      const doi = (r.articleids||[]).find(a=>a.idtype==='doi');
+      return {
+        pmid: id,
+        title: r.title || '(无标题)',
+        journal: r.source || '',
+        date: r.pubdate || '',
+        doi: doi ? doi.value : ''
+      };
+    }).filter(p=>p.title!=='(无标题)');
+    renderPapers();
+  }catch(e){
+    let msg = e.message || '检索失败';
+    if(/Failed to fetch|fetch|NetworkError/i.test(msg)) msg = '网络请求失败：无法访问 PubMed（NCBI）。请确认网络可访问 eutils.ncbi.nlm.nih.gov。';
+    $('#paperList').innerHTML = '<div class="paper-empty" style="color:var(--danger)">检索失败：'+esc(msg)+'</div>';
+  }
+}
+
+function renderPapers(){
+  const el = $('#paperList'); if(!el) return;
+  if(lastPapers.length===0){
+    el.innerHTML = '<div class="paper-empty">未检索到有效结果，请重试。</div>';
+    return;
+  }
+  el.innerHTML = lastPapers.map((p,i)=>
+    `<div class="paper-item">
+      <span class="pj-tag">${esc(p.journal||'顶刊')}</span>
+      <div class="pj-title">${esc(p.title)}</div>
+      <div class="pj-meta">${esc(p.date)} · PMID: ${esc(p.pmid)}${p.doi?' · DOI: '+esc(p.doi):''}</div>
+      <div class="pj-actions">
+        <button class="btn btn-sm btn-primary" onclick="pickPaperAsIdea(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>选为选题</button>
+        <a class="btn btn-sm" href="https://pubmed.ncbi.nlm.nih.gov/${esc(p.pmid)}/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>PubMed 原文</a>
+      </div>
+    </div>`
+  ).join('');
+}
+
+function pickPaperAsIdea(index){
+  const p = lastPapers[index];
+  if(!p){ showToast('论文数据缺失'); return; }
+  const title = p.title.slice(0,80);
+  const note = `顶刊文献：${p.journal||''} ${p.date||''} · PMID:${p.pmid}` + (p.doi?` · DOI:${p.doi}`:'') + ' · 详见 PubMed 原文';
+  state.ideas.push({
+    id:uid(), title: title, category:'前沿文献', platforms:['公众号'],
+    priority:'P1', status:'inspiration', dueDate:'', note: note, createdAt:todayStr(), updatedAt:todayStr()
+  });
+  save(); renderAll(); switchTab('ideas');
+  showToast('已存入选题「灵感」列（分类：前沿文献）');
+}
+
 /* ================= 选题看板 ================= */
 const PLATFORMS = ['抖音','视频号','小红书','公众号'];
-function catChip(c){ return c==='科普' ? 'chip-cat-kp' : c==='临床招募' ? 'chip-cat-lc' : 'chip-cat-bd' }
+function catChip(c){ return c==='科普' ? 'chip-cat-kp' : c==='临床招募' ? 'chip-cat-lc' : c==='BD合作' ? 'chip-cat-bd' : 'chip-cat-paper' }
 function platChip(p){ return 'chip-plat' }
 function renderIdeas(){
   const cols = [
@@ -987,19 +1131,26 @@ function renderGenTypes(){
 function setGenType(k){ curGenType=k; renderGenTypes(); updateAIPanel(); }
 function updateAIPanel(){
   const isVideo = curGenType==='videogen';
+  const isArticle = curGenType==='article';
   $('#videoParams').style.display = isVideo ? '' : 'none';
   $('#textOnlyFields').style.display = isVideo ? 'none' : '';
   $('#extraField').style.display = isVideo ? 'none' : '';
+  $('#strictField').style.display = isArticle ? '' : 'none';
   $('#aiTopicLabel').textContent = isVideo ? '视频创意描述' : '主题 / 关键词';
   $('#aiTopic').placeholder = isVideo ? '例如：一只实验小鼠的细胞在显微镜下分裂，微观世界，蓝青色科技感，平滑运镜' : '例如：ADC 抗体偶联药物怎么精准打击癌细胞';
   $('#aiGenBtnText').textContent = isVideo ? '生成视频' : '生成内容';
   updateAIBadge();
 }
+function onArticleStrict(){
+  state.articleStrict = $('#articleStrict').checked;
+  save();
+}
 
 const CAT_DESC = {
   '科普':'生物医药研发知识科普',
   '临床招募':'临床试验受试者招募',
-  'BD合作':'商务拓展与合作'
+  'BD合作':'商务拓展与合作',
+  '前沿文献':'顶刊前沿肿瘤药物研发/临床数据'
 };
 function buildPrompt(){
   const topic = $('#aiTopic').value.trim();
@@ -1011,17 +1162,20 @@ function buildPrompt(){
   const compliance = '合规要求：生物医药内容务必准确、有据可依，不编造数据或夸大疗效；' +
     '禁用医疗广告法绝对化用语（如"根治""治愈率100%""第一""最有效"等）；科普内容需标注"仅供健康科普参考，不构成诊疗建议"；' +
     '临床招募内容不承诺疗效，须提示读者在医生指导下参与，并注明需核实入排标准；BD合作内容不泄露未公开信息。';
+  const strictArticle = !!state.articleStrict; // 公众号专用提示词预设开关
+
+  const articleStrictRule = '【硬性输出格式】你只能输出一个合法的 JSON 对象，并且必须放在一个 ```json 代码块里。禁止输出任何 JSON 之外的文字、解释、前言、问候、结语或 Markdown 标题。即使你不确定，也必须输出完整的 JSON 字段（可为空字符串），绝不能输出"好的""以下是"之类的引导语。';
 
   const sysByType = {
     title: '你是资深生物医药内容创作者，擅长起爆款标题。' + compliance,
     script: '你是生物医药短视频编导。脚本要求：黄金3秒钩子开头、口语化、用通俗比喻讲清专业概念、全片45-60秒约180字口播、结尾引导关注。' + compliance,
-    article: '你是生物医药深度科普作者兼专业公众号编辑。要求：输出严格 JSON 用于工作台可视化排版渲染；内容通俗易懂、结构清晰、数据有出处。' + compliance,
+    article: '你是生物医药深度科普作者兼专业公众号编辑。要求：输出严格 JSON 用于工作台可视化排版渲染；内容通俗易懂、结构清晰、数据有出处。' + (strictArticle?articleStrictRule:'') + compliance,
     plain: '你是生物医药科普翻译官，把专业内容转成普通人能听懂的通俗科普。保留关键信息，善用类比，术语附通俗解释。' + compliance
   };
   const usrByType = {
     title: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请生成 10 个爆款标题候选，每行一个，风格多样（疑问式、数字式、悬念式、痛点式、反差式）。${extra?'\n补充要求：'+extra:''}`,
     script: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请输出：1) 标题\n2) 黄金3秒钩子\n3) 正文口播脚本（分镜头）\n4) 结尾 CTA\n5) 封面文案建议。${extra?'\n补充要求：'+extra:''}`,
-    article: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内（无文字插画）"\n    }\n  ]（3-5个 sections）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
+    article: `${strictArticle?'⚠️ 只输出一个 ```json 代码块，其中是合法 JSON 对象，不要任何其他文字。\n':''}主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内（无文字插画）"\n    }\n  ]（3-5个 sections）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
     plain: `请把以下内容改写成通俗科普（普通人都能看懂）：\n${topic}\n${extra?'\n补充要求：'+extra:''}`
   };
 
@@ -1981,6 +2135,8 @@ function init(){
   // 默认排期日期 = 明天
   $('#schedDate').value = fmtDate(addDays(new Date(),1));
   updateAIBadge();
+  renderPaperJournals();
+  $('#articleStrict').checked = !!state.articleStrict;
   renderAll();
   // 云同步：已启用则拉取云端数据，否则显示本地存储
   if(state.sync && state.sync.enabled && state.sync.token){ syncPull(); }
