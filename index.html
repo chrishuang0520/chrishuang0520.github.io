@@ -145,7 +145,31 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
 .ai-result h4{font-size:14px;margin:14px 0 6px;color:var(--primary)}
 .ai-result p{margin:6px 0}
 .ai-result .line{margin:4px 0;padding-left:10px;border-left:2px solid var(--primary-soft)}
-.gen-type{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* ====== 公众号可视化预览 ====== */
+.article-preview{max-width:100%;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",serif;color:#222;line-height:1.8}
+.ap-title{font-size:22px;font-weight:bold;text-align:center;color:#1a1a1a;margin:18px 0 14px;line-height:1.4}
+.ap-cover{margin:14px 0}
+.ap-cover img{width:100%;border-radius:8px;display:block}
+.ap-lead,.ap-quote{border-left:3px solid var(--primary);padding:10px 14px;margin:18px 0;color:#444;background:#f5faf7;border-radius:0 6px 6px 0}
+.ap-quote{font-style:italic;color:var(--primary);background:transparent;border-left-width:4px}
+.ap-section{margin:24px 0 8px}
+.ap-h3{font-size:18px;font-weight:bold;color:var(--primary);padding-left:10px;border-left:4px solid var(--primary);margin:20px 0 10px;line-height:1.5}
+.ap-content{font-size:15.5px;margin:8px 0;line-height:1.85}
+.ap-points{background:#f6f8f7;padding:12px 14px 12px 32px;border-radius:8px;margin:10px 0;list-style:disc}
+.ap-points li{margin:6px 0;font-size:14.5px}
+.ap-figure{margin:14px 0;text-align:center}
+.ap-figure img{width:100%;border-radius:8px}
+.ap-figure .ap-prompt{font-size:12px;color:var(--muted);margin:6px 0 4px}
+.ap-img-placeholder{border:2px dashed #d8e2dd;border-radius:10px;padding:30px 14px;text-align:center;color:var(--muted);background:#fafcfb;display:flex;flex-direction:column;align-items:center;gap:10px}
+.ap-img-placeholder.sm{padding:20px 12px}
+.ap-img-placeholder svg{width:36px;height:36px;color:#b4c2bd}
+.ap-img-placeholder.sm svg{width:28px;height:28px}
+.ap-img-placeholder .ap-prompt{font-size:13px;color:#5d6e66;margin:0;max-width:90%}
+.ap-img-placeholder .btn{margin-top:4px}
+.ap-divider{border-top:1px dashed #ccd5d0;margin:24px 0 18px}
+.ap-conclusion{padding:14px 16px;background:linear-gradient(135deg,#f5faf7 0%,#eaf5f0 100%);border-radius:10px;margin:16px 0 0;color:#444}
+.ap-conclusion-text{font-size:14.5px;line-height:1.8}
+.ap-conclusion-text::before{content:"📝 写在最后 ";font-weight:bold;color:var(--primary);display:block;margin-bottom:6px}.gen-type{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .gen-type .gt{display:flex;align-items:center;gap:8px;padding:11px;border:1.5px solid var(--border);border-radius:11px;
   font-size:13px;font-weight:600;color:var(--muted);text-align:left;transition:.15s}
 .gen-type .gt svg{width:17px;height:17px;flex-shrink:0}
@@ -362,15 +386,16 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
         </button>
         <div id="aiModelBadge" style="font-size:12px;color:var(--muted);text-align:center;margin-top:10px"></div>
       </div>
-      <div class="ai-out">
-        <div class="ai-out-head">
-          <span class="lbl">生成结果</span>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-sm" id="aiCopyBtn" onclick="copyAIResult()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>复制</button>
-            <button class="btn btn-sm" id="aiPackBtn" onclick="packPublishText()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>发布文案</button>
-            <button class="btn btn-sm" id="aiSaveBtn" onclick="saveAIAsIdea()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>存为选题</button>
+<div class="ai-out">
+          <div class="ai-out-head">
+            <span class="lbl">生成结果</span>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <button class="btn btn-sm" id="aiBatchImgBtn" onclick="genArticleAllImgs()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>一键全文配图</button>
+              <button class="btn btn-sm" id="aiCopyBtn" onclick="copyAIResult()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>复制</button>
+              <button class="btn btn-sm" id="aiPackBtn" onclick="packPublishText()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>发布文案</button>
+              <button class="btn btn-sm" id="aiSaveBtn" onclick="saveAIAsIdea()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>存为选题</button>
+            </div>
           </div>
-        </div>
         <div class="ai-out-body" id="aiOutBody">
           <div class="empty">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
@@ -476,6 +501,27 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
       <label>视频模型</label>
       <input class="input" id="cfgVideoModel" placeholder="MiniMax-H3">
     </div>
+    <div style="border-top:1px solid var(--border);margin:16px 0 2px;padding-top:14px;font-size:13px;font-weight:700;color:var(--primary)">图像生成（公众号配图）</div>
+    <p class="section-tip" style="font-size:12px;color:var(--muted);margin:6px 0 10px">支持 OpenAI 兼容 /images/generations 端点，如 OpenAI、智谱、通义万相、自建服务。</p>
+    <div class="field" style="margin-top:10px">
+      <label>提供商</label>
+      <select class="input" id="cfgImgProvider" onchange="onImgProviderChange()"></select>
+    </div>
+    <div class="field">
+      <label>图像 API Key</label>
+      <input class="input" id="cfgImgKey" type="password" placeholder="用于生图的独立 API Key">
+    </div>
+    <div class="field">
+      <label>图像接口地址</label>
+      <input class="input" id="cfgImgBase" placeholder="https://api.openai.com/v1">
+    </div>
+    <div class="field">
+      <label>图像模型</label>
+      <input class="input" id="cfgImgModel" placeholder="gpt-image-1">
+    </div>
+    <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:6px" onclick="testImageKey()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>检测图像 Key 是否有效
+    </button>
     <div style="border-top:1px solid var(--border);margin:16px 0 2px;padding-top:14px;font-size:13px;font-weight:700;color:var(--primary)">云同步（GitHub · 跨设备）</div>
     <div class="field" style="margin-top:10px">
       <label>GitHub Token (PAT)</label>
@@ -495,17 +541,24 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
 
 <!-- ===== 发布文案预览弹窗 ===== -->
 <div class="overlay" id="publishPrevOv">
-  <div class="drawer">
+  <div class="drawer" style="max-width:760px">
     <div class="drawer-head">
-      <h3>发布文案预览</h3>
+      <h3 id="publishPrevTitle">发布文案预览</h3>
       <button class="btn" onclick="closePublishPrev()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
     </div>
-    <div id="publishPrevBody" style="font-size:14px;white-space:pre-wrap;word-break:break-word;line-height:1.7;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;max-height:52vh;overflow:auto"></div>
-    <div style="display:flex;gap:10px;margin-top:14px">
-      <button class="btn" style="flex:1;justify-content:center" onclick="closePublishPrev()">再改改</button>
-      <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="copyPublishPrev()">复制发布</button>
+    <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;font-size:12px;color:var(--muted)">
+      <span>📱</span><span>预览效果约等于公众号/小红书实际呈现的样子</span>
+    </div>
+    <div id="publishPrevBody" style="font-size:14px;white-space:pre-wrap;word-break:break-word;line-height:1.7;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px;max-height:54vh;overflow:auto"></div>
+    <div id="publishPrevActions" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn" style="flex:1;justify-content:center;min-width:100px" onclick="closePublishPrev()">再改改</button>
+      <button class="btn" style="flex:1;justify-content:center;min-width:100px" id="publishPrevCopyMdBtn" onclick="copyPublishPrevMd()">复制纯文本</button>
+<button class="btn btn-primary" style="flex:1.5;justify-content:center;min-width:140px" id="publishPrevCopyHtmlBtn" onclick="copyPublishPrevHtml()">复制富文本（带格式粘贴）</button>
     </div>
   </div>
+</div>
+
+<!-- ===== 发布文案预览弹窗结束 ===== -->
 </div>
 
 <!-- ===== 选题弹窗 ===== -->
@@ -962,13 +1015,13 @@ function buildPrompt(){
   const sysByType = {
     title: '你是资深生物医药内容创作者，擅长起爆款标题。' + compliance,
     script: '你是生物医药短视频编导。脚本要求：黄金3秒钩子开头、口语化、用通俗比喻讲清专业概念、全片45-60秒约180字口播、结尾引导关注。' + compliance,
-    article: '你是生物医药深度科普作者。要求：标题+导语+分点正文+总结，通俗易懂、结构清晰、数据有出处。' + compliance,
+    article: '你是生物医药深度科普作者兼专业公众号编辑。要求：输出严格 JSON 用于工作台可视化排版渲染；内容通俗易懂、结构清晰、数据有出处。' + compliance,
     plain: '你是生物医药科普翻译官，把专业内容转成普通人能听懂的通俗科普。保留关键信息，善用类比，术语附通俗解释。' + compliance
   };
   const usrByType = {
     title: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请生成 10 个爆款标题候选，每行一个，风格多样（疑问式、数字式、悬念式、痛点式、反差式）。${extra?'\n补充要求：'+extra:''}`,
     script: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请输出：1) 标题\n2) 黄金3秒钩子\n3) 正文口播脚本（分镜头）\n4) 结尾 CTA\n5) 封面文案建议。${extra?'\n补充要求：'+extra:''}`,
-    article: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请输出完整图文：1) 标题\n2) 导语（150字内）\n3) 正文（3-5个小标题分点展开）\n4) 结尾总结+引导关注。${extra?'\n补充要求：'+extra:''}`,
+    article: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内（无文字插画）"\n    }\n  ]（3-5个 sections）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
     plain: `请把以下内容改写成通俗科普（普通人都能看懂）：\n${topic}\n${extra?'\n补充要求：'+extra:''}`
   };
 
@@ -988,6 +1041,7 @@ async function generate(){
   const topic = $('#aiTopic').value.trim();
   if(!topic){ showToast('请先输入主题/关键词'); $('#aiTopic').focus(); return; }
 
+  $('#aiBatchImgBtn').style.display='none';
   const btn = $('#aiGenBtn');
   btn.disabled = true;
   $('#aiOutBody').innerHTML = '<div class="ai-loading"><span class="spinner"></span>正在调用 '+prov.name+' 生成，请稍候…</div>';
@@ -1045,6 +1099,7 @@ async function generateVideo(){
   const vBase = (cfg.videoBaseUrl||'https://api.minimax.io').replace(/\/+$/,'');
   const btn = $('#aiGenBtn');
   btn.disabled = true;
+  $('#aiBatchImgBtn').style.display='none';
   $('#aiCopyBtn').style.display='none'; $('#aiSaveBtn').style.display='none'; $('#aiPackBtn').style.display='none';
   const setStatus = s=>{ $('#aiOutBody').innerHTML = '<div class="ai-loading"><span class="spinner"></span>'+s+'</div>'; };
   try{
@@ -1097,7 +1152,41 @@ function renderVideoResult(url){
   $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
 }
 function renderAIResult(text){
-  // 简单结构化：把 markdown 标题/列表转成可视化
+  // 检查是否为公众号图文（curGenType==='article'），且包含 JSON 代码块
+  if(curGenType==='article'){
+    const parsed = parseArticleJSON(text);
+    if(parsed){
+      lastArticleData = parsed; // 保存以便配图
+      $('#aiOutBody').innerHTML = renderArticlePreview(parsed);
+      $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
+      $('#aiBatchImgBtn').style.display='inline-flex';
+      return;
+    }else{
+      // 解析失败：给个清晰提示 + 让用户重试
+      $('#aiOutBody').innerHTML = `<div class="empty" style="padding:40px 20px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:42px;height:42px;color:var(--danger);margin:0 auto 14px;display:block"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <div style="color:var(--danger);font-weight:600">未识别到结构化 JSON 输出</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:8px">公众号图文需要 AI 输出 JSON 格式才能可视化预览。建议换个模型（如 GPT-4o / Claude Sonnet / 智谱 glm-4.7），或在补充要求里写"请严格按 JSON 输出"。</div>
+        <pre style="text-align:left;background:var(--bg);padding:12px;border-radius:8px;margin-top:14px;max-height:240px;overflow:auto;font-size:12px;white-space:pre-wrap">${esc(text.slice(0,1000))}</pre>
+      </div>`;
+      $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex';
+      $('#aiBatchImgBtn').style.display='none'; $('#aiPackBtn').style.display='inline-flex';
+      lastArticleData = null;
+      return;
+    }
+  }
+  // 视频生成结果
+  if(curGenType==='videogen'){
+    const m = text.match(/(https?:\/\/\S+\.(mp4|webm))/i);
+    const url = m ? m[1] : text.trim().split(/\s+/).pop();
+    lastVideoUrl = url;
+    $('#aiOutBody').innerHTML =
+      `<div style="margin-bottom:12px"><video src="${esc(url)}" controls autoplay loop playsinline style="width:100%;border-radius:12px;background:#000"></video></div>` +
+      `<div style="font-size:12px;color:var(--muted);word-break:break-all;margin-bottom:8px">${esc(url)}</div>`;
+    $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
+    return;
+  }
+  // 公众号以外的通用文本渲染（标题/脚本/通俗化）：mark down 化
   const lines = text.split('\n');
   let html = '<div class="ai-result">';
   let inList = false;
@@ -1113,6 +1202,118 @@ function renderAIResult(text){
   $('#aiOutBody').innerHTML = html;
   $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
 }
+
+/* ===== 公众号文章 JSON 解析 + 可视化预览 ===== */
+let lastArticleData = null; // 保存最近一次生成的公众号文章结构（含 imagePrompt）
+let lastVideoUrl = '';
+
+// 智能解析：尝试从 text 里提取 JSON 代码块或首段 JSON
+function parseArticleJSON(text){
+  if(!text) return null;
+  // 1. 匹配 ```json ... ``` 代码块
+  const m = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  if(m){
+    try{
+      const d = JSON.parse(m[1]);
+      if(d.title && Array.isArray(d.sections)) return d;
+    }catch(e){}
+  }
+  // 2. 尝试整段就是 JSON
+  try{
+    const d = JSON.parse(text.trim());
+    if(d.title && Array.isArray(d.sections)) return d;
+  }catch(e){}
+  // 3. 在文本里找第一个看起来像 JSON 的对象
+  const idx = text.indexOf('{'); const end = text.lastIndexOf('}');
+  if(idx>-1 && end>idx){
+    try{
+      const d = JSON.parse(text.slice(idx, end+1));
+      if(d.title && Array.isArray(d.sections)) return d;
+    }catch(e){}
+  }
+  return null;
+}
+
+// 渲染公众号文章为可视化预览
+function renderArticlePreview(d){
+  // 用于保存带已生成图片（key=sectionIndex, value=url）
+  const imgs = state.lastArticleImgs || (state.lastArticleImgs = {});
+  let h = '<div class="article-preview">';
+  // 1. 主标题
+  h += `<div class="ap-title">${esc(d.title||'未命名标题')}</div>`;
+  // 2. 封面图位
+  const coverImg = imgs['__cover__'];
+  h += `<div class="ap-cover" data-cover="${esc(d.coverPrompt||'')}">${
+    coverImg? `<img src="${esc(coverImg)}" alt="封面">`
+    : `<div class="ap-img-placeholder"><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><path d='M21 15l-5-5L5 21'/></svg><div class="ap-prompt">封面图：${esc(d.coverPrompt||'建议：与文章主题相关的医学插画')}</div><button class="btn btn-sm" onclick="genArticleImg('__cover__','${esc(d.coverPrompt||'').replace(/'/g,"\\'")}')">为封面配图</button></div>`
+  }</div>`;
+  // 3. 导语
+  if(d.lead) h += `<blockquote class="ap-lead">${esc(d.lead)}</blockquote>`;
+  // 4. 章节
+  (d.sections||[]).forEach((sec, i)=>{
+    h += `<div class="ap-section">`;
+    h += `<h3 class="ap-h3">${esc(sec.heading||('第'+(i+1)+'节'))}</h3>`;
+    h += `<div class="ap-content">${esc(sec.content||'').replace(/\n/g,'<br>')}</div>`;
+    if(sec.keyPoints && sec.keyPoints.length){
+      h += `<ul class="ap-points">${sec.keyPoints.map(p=>`<li>${esc(p)}</li>`).join('')}</ul>`;
+    }
+    if(sec.quote) h += `<blockquote class="ap-quote">${esc(sec.quote)}</blockquote>`;
+    // 配图位
+    const secImg = imgs[String(i)];
+    h += `<div class="ap-figure" data-prompt="${esc(sec.imagePrompt||'')}">${
+      secImg? `<img src="${esc(secImg)}" alt="配图"><div class="ap-prompt">${esc(sec.imagePrompt)}</div>`
+      : `<div class="ap-img-placeholder sm"><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><path d='M21 15l-5-5L5 21'/></svg><div class="ap-prompt">配图：${esc(sec.imagePrompt||'与本节内容相关的插画')}</div><button class="btn btn-sm" onclick="genArticleImg('${i}','${esc(sec.imagePrompt||'').replace(/'/g,"\\'")}')">为这节配图</button></div>`
+    }</div>`;
+    h += `</div>`;
+  });
+  // 5. 结尾/CTA
+  if(d.conclusion){
+    h += `<div class="ap-conclusion"><div class="ap-divider"></div><div class="ap-conclusion-text">${esc(d.conclusion).replace(/\n/g,'<br>')}</div></div>`;
+  }
+  h += '</div>';
+  return h;
+}
+
+// 把解析的文章转成 Markdown 文本（用于复制纯文本）
+function articleToMarkdown(d){
+  let s = `# ${d.title||''}\n\n`;
+  if(d.lead) s += `> ${d.lead}\n\n`;
+  (d.sections||[]).forEach((sec,i)=>{
+    s += `## ${sec.heading||('第'+(i+1)+'节')}\n\n`;
+    s += (sec.content||'') + '\n\n';
+    if(sec.keyPoints && sec.keyPoints.length){
+      s += sec.keyPoints.map(p=>`- ${p}`).join('\n') + '\n\n';
+    }
+    if(sec.quote) s += `> ${sec.quote}\n\n`;
+  });
+  if(d.conclusion) s += `---\n\n${d.conclusion}\n`;
+  return s;
+}
+// 把解析的文章转成公众号编辑器友好 HTML（直接复制粘贴用）
+function articleToRichHTML(d){
+  const imgs = state.lastArticleImgs||{};
+  const escA = s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let h = `<section style="max-width:677px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',serif;color:#333;line-height:1.8;font-size:16px">`;
+  h += `<h1 style="text-align:center;font-size:22px;font-weight:bold;color:#1a1a1a;margin:20px 0">${escA(d.title||'')}</h1>`;
+  if(imgs['__cover__']) h += `<img src="${imgs['__cover__']}" style="width:100%;border-radius:8px;margin:16px 0">`;
+  if(d.lead) h += `<blockquote style="border-left:3px solid #0a8754;padding:8px 14px;margin:18px 0;color:#555;background:#f6f8f7;border-radius:0 6px 6px 0">${escA(d.lead)}</blockquote>`;
+  (d.sections||[]).forEach((sec,i)=>{
+    h += `<h2 style="font-size:18px;font-weight:bold;color:#0a8754;margin:24px 0 10px;padding-left:10px;border-left:4px solid #0a8754">${escA(sec.heading||'')}</h2>`;
+    h += `<p style="margin:10px 0;text-indent:2em">${escA(sec.content||'').replace(/\n/g,'</p><p style="margin:10px 0;text-indent:2em">')}</p>`;
+    if(sec.keyPoints && sec.keyPoints.length){
+      h += `<ul style="background:#f6f8f7;padding:14px 30px;border-radius:8px;list-style:disc">${sec.keyPoints.map(p=>`<li style="margin:6px 0">${escA(p)}</li>`).join('')}</ul>`;
+    }
+    if(sec.quote) h += `<blockquote style="border-left:3px solid #0a8754;padding:6px 14px;margin:14px 0;color:#0a8754;font-style:italic">${escA(sec.quote)}</blockquote>`;
+    if(imgs[String(i)]) h += `<img src="${imgs[String(i)]}" style="width:100%;border-radius:8px;margin:14px 0"><p style="text-align:center;color:#888;font-size:13px;margin:0 0 16px">${escA(sec.imagePrompt||'')}</p>`;
+  });
+  if(d.conclusion){
+    h += `<hr style="border:none;border-top:1px dashed #ccc;margin:24px 0">`;
+    h += `<p style="margin:10px 0;color:#666">${escA(d.conclusion).replace(/\n/g,'</p><p style="margin:10px 0;color:#666">')}</p>`;
+  }
+  h += `</section>`;
+  return h;
+}
+
 function copyText(text){
   navigator.clipboard.writeText(text).then(()=>showToast('已复制到剪贴板')).catch(()=>{
     const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
@@ -1120,6 +1321,84 @@ function copyText(text){
     document.body.removeChild(ta);
   });
 }
+function copyRichHTML(html){
+  // 优先尝试剪贴板 HTML 格式（粘贴到公众号编辑器带样式）；失败则降级到纯文本
+  if(navigator.clipboard && window.ClipboardItem){
+    const item = new ClipboardItem({
+      'text/html': new Blob([html], {type:'text/html'}),
+      'text/plain': new Blob([html.replace(/<[^>]+>/g,'\n').replace(/\n+/g,'\n')], {type:'text/plain'})
+    });
+    navigator.clipboard.write([item]).then(()=>showToast('富文本已复制（带格式），直接粘贴到公众号编辑器')).catch(()=>copyText(html));
+  }else{
+    copyText(html);
+  }
+}
+/* ====== 图像生成 ====== */
+// 图像生成提供商配置（OpenAI 兼容的 /images/generations 端点）
+const IMAGE_PROVIDERS = [
+  {key:'openai_img', name:'OpenAI gpt-image-1', baseUrl:'https://api.openai.com/v1', model:'gpt-image-1'},
+  {key:'openai_dalle3', name:'OpenAI DALL-E 3', baseUrl:'https://api.openai.com/v1', model:'dall-e-3'},
+  {key:'zhipu_img', name:'智谱 CogView-4', baseUrl:'https://open.bigmodel.cn/api/paas/v4', model:'cogview-4'},
+  {key:'aliyun_wanxiang', name:'通义万相', baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1', model:'wanx-v1'},
+  {key:'custom_img', name:'自定义（OpenAI 兼容）', baseUrl:'', model:''}
+];
+
+// 给公众号文章某位置生成图片。key='__cover__' 为封面，否则为 section index
+async function genArticleImg(key, prompt){
+  const cfg = state.aiConfig.image || {provider:'openai_img', apiKey:'', baseUrl:'', model:''};
+  const prov = IMAGE_PROVIDERS.find(p=>p.key===cfg.provider) || IMAGE_PROVIDERS[0];
+  const apiKey = cfg.apiKey;
+  const baseUrl = (cfg.baseUrl || prov.baseUrl).replace(/\/+$/,'');
+  const model = cfg.model || prov.model;
+  if(!apiKey){ showToast('请先在 AI 设置里填写「图像生成」API Key'); openSettings(); return; }
+  if(!prompt){ showToast('该位置无配图描述'); return; }
+  const btn = document.activeElement;
+  const oldTxt = btn ? btn.innerText : '';
+  if(btn){ btn.disabled = true; btn.innerText = '生成中…'; }
+  showToast('正在生成配图（约 5-30 秒）…');
+  const fullPrompt = `${prompt}. Medical/biomedical illustration style, clean and professional, no text in image, suitable for science article cover.`;
+  try{
+    const res = await fetch(baseUrl + '/images/generations', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey },
+      body: JSON.stringify({ model, prompt: fullPrompt, n:1, size:'1024x576' })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || (data.error && data.error.message)){
+      throw new Error(data.error?.message || ('HTTP '+res.status));
+    }
+    const url = (data.data && data.data[0] && (data.data[0].url || (data.data[0].b64_json && 'data:image/png;base64,'+data.data[0].b64_json))) || '';
+    if(!url) throw new Error('未拿到图片 URL');
+    state.lastArticleImgs = state.lastArticleImgs || {};
+    state.lastArticleImgs[key] = url;
+    save();
+    if(lastArticleData){
+      $('#aiOutBody').innerHTML = renderArticlePreview(lastArticleData);
+      $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
+    }
+    showToast('配图完成 ✓');
+  }catch(e){
+    let msg = e.message || '生成失败';
+    if(/Failed to fetch|fetch|NetworkError/i.test(msg)) msg = '网络请求失败，检查图像接口地址与 Key';
+    showToast('配图失败：'+msg);
+  }finally{
+    if(btn){ btn.disabled = false; btn.innerText = oldTxt || '重新配图'; }
+  }
+}
+
+// 批量为封面+所有 sections 配图
+async function genArticleAllImgs(){
+  if(!lastArticleData){ showToast('请先生成文章'); return; }
+  const items = [{key:'__cover__', prompt: lastArticleData.coverPrompt || lastArticleData.title}];
+  (lastArticleData.sections||[]).forEach((sec,i)=>{
+    if(sec.imagePrompt) items.push({key:String(i), prompt: sec.imagePrompt});
+  });
+  showToast(`共需生成 ${items.length} 张图，将依次请求`);
+  for(const it of items){
+    await genArticleImg(it.key, it.prompt);
+  }
+}
+
 function getAIResultText(){
   // 统一获取"当前 AI 生成内容"：优先内存变量，丢失时（刷新后）从 DOM 反读
   let text = lastAIResult;
@@ -1151,31 +1430,72 @@ function buildHashtags(cat, plat){
   return tags.map(t=>'#'+t).join(' ');
 }
 let lastPublishText = '';
+let lastPublishRichHTML = '';
+let lastPublishArticle = null;
 function packPublishText(){
-  const text = getAIResultText();
-  if(!text){ showToast('暂无内容，请先点「生成内容」'); return; }
-  const cat = $('#aiCat').value;
   const plat = $('#aiPlat').value;
+  const cat = $('#aiCat').value;
   const tags = buildHashtags(cat, plat);
-  let out;
-  if(curGenType==='videogen'){
-    const topic = $('#aiTopic').value.trim() || 'AI 生成视频';
-    out = topic + '\n\n' + tags + '\n\n' + text;
-  }else{
-    out = text.trim() + '\n\n' + tags;
+
+  // —— 公众号图文 + 解析成功 → 显示可视化预览 + 复制富文本优先 ——
+  if(curGenType==='article' && lastArticleData){
+    const d = lastArticleData;
+    const richHTML = articleToRichHTML(d);
+    const md = articleToMarkdown(d) + '\n\n' + tags;
+    lastPublishText = md;
+    lastPublishRichHTML = richHTML;
+    lastPublishArticle = d;
+    // 预览 = 可视化渲染 + 末尾的话题标签
+    $('#publishPrevBody').innerHTML = renderArticlePreview(d) +
+      `<div style="margin-top:14px;padding-top:12px;border-top:1px dashed #ccd5d0;color:var(--primary)">${tags.replace(/ /g,' ')}</div>` +
+      `<div style="margin-top:8px;font-size:12px;color:var(--muted)">📌 复制富文本后，去公众号编辑器直接粘贴，自动带段落标题/引用/图片样式</div>`;
+    $('#publishPrevCopyHtmlBtn').style.display = 'inline-flex';
+    $('#publishPrevCopyMdBtn').textContent = '复制 Markdown';
+  } else {
+    // —— 其他类型（标题/脚本/通俗化/视频）：显示纯文本预览 ——
+    const text = getAIResultText();
+    if(!text){ showToast('暂无内容，请先点「生成内容」'); return; }
+    let out;
+    if(curGenType==='videogen'){
+      const topic = $('#aiTopic').value.trim() || 'AI 生成视频';
+      out = topic + '\n\n' + tags + '\n\n' + text;
+    }else{
+      out = text.trim() + '\n\n' + tags;
+    }
+    if(plat==='小红书') out += '\n\n小贴士：配 3-4 张图更易爆，首图加标题字';
+    lastPublishText = out;
+    lastPublishRichHTML = '';
+    lastPublishArticle = null;
+    $('#publishPrevBody').textContent = out;
+    $('#publishPrevCopyHtmlBtn').style.display = 'none';
+    $('#publishPrevCopyMdBtn').textContent = '复制';
   }
-  if(plat==='小红书') out += '\n\n小贴士：配 3-4 张图更易爆，首图加标题字';
-  lastPublishText = out;
-  $('#publishPrevBody').textContent = out;
   $('#publishPrevOv').classList.add('show');
 }
 function closePublishPrev(){ $('#publishPrevOv').classList.remove('show'); }
-function copyPublishPrev(){
+function copyPublishPrevMd(){
   if(!lastPublishText){ showToast('暂无内容'); return; }
   copyText(lastPublishText);
-  closePublishPrev();
-  showToast('发布文案已复制，去 '+$('#aiPlat').value+' 粘贴即可');
 }
+async function copyPublishPrevHtml(){
+  if(!lastPublishRichHTML){ showToast('当前内容不支持富文本复制'); return; }
+  // 优先 ClipboardItem 同时写 html/text，回退到剪贴板纯文本
+  try{
+    if(navigator.clipboard && window.ClipboardItem){
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([lastPublishRichHTML], {type:'text/html'}),
+        'text/plain': new Blob([lastPublishText], {type:'text/plain'})
+      })]);
+      showToast('富文本已复制 ✓ 直接粘贴到公众号编辑器');
+    }else{
+      await copyText(lastPublishRichHTML);
+    }
+  }catch(e){
+    // 浏览器不支持 ClipboardItem 时直接复制纯文本 Markdown
+    copyText(lastPublishText);
+  }
+}
+function closePublishPrev(){ $('#publishPrevOv').classList.remove('show'); }
 function saveAIAsIdea(){
   try{
     const text = getAIResultText();
@@ -1214,6 +1534,11 @@ function openSettings(){
   $('#cfgKey').value = acct.apiKey; $('#cfgBase').value = acct.baseUrl;
   fillCfgModelSelect(acct.model);
   $('#cfgVideoKey').value = c.videoKey||''; $('#cfgVideoBase').value = c.videoBaseUrl||''; $('#cfgVideoModel').value = c.videoModel||'';
+  // 图像生成配置
+  const img = c.image || {provider:'openai_img',apiKey:'',baseUrl:'https://api.openai.com/v1',model:'gpt-image-1'};
+  formImageProvider = img.provider;
+  $('#cfgImgProvider').innerHTML = IMAGE_PROVIDERS.map(p=>`<option value="${p.key}" ${p.key===img.provider?'selected':''}>${p.name}</option>`).join('');
+  $('#cfgImgKey').value = img.apiKey||''; $('#cfgImgBase').value = img.baseUrl||''; $('#cfgImgModel').value = img.model||'';
   $('#cfgSyncToken').value = state.sync.token||''; $('#cfgSyncOwner').value = state.sync.owner||''; $('#cfgSyncRepo').value = state.sync.repo||''; $('#cfgSyncEnabled').checked = !!state.sync.enabled;
   $('#testKeyResult').innerHTML = '';
   $('#settingsOv').classList.add('show');
@@ -1247,6 +1572,41 @@ function fillCfgModelSelect(currentModel){
   ).join('');
   $('#cfgModelCustom').style.display = isCustom?'':'none';
   $('#cfgModelCustom').value = isCustom?cur:'';
+}
+function onImgProviderChange(){
+  const p = IMAGE_PROVIDERS.find(x=>x.key===$('#cfgImgProvider').value);
+  if(!p) return;
+  $('#cfgImgBase').value = p.baseUrl||'';
+  $('#cfgImgModel').value = p.model||'';
+}
+async function testImageKey(){
+  const pk = $('#cfgImgProvider').value;
+  const prov = IMAGE_PROVIDERS.find(p=>p.key===pk) || IMAGE_PROVIDERS[0];
+  const apiKey = $('#cfgImgKey').value.trim();
+  const base = ($('#cfgImgBase').value.trim() || prov.baseUrl).replace(/\/+$/,'');
+  const model = $('#cfgImgModel').value.trim() || prov.model;
+  if(!apiKey){ showToast('请先填写图像 API Key'); return; }
+  showToast('正在检测图像 Key…');
+  try{
+    const res = await fetch(base + '/images/generations', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey },
+      body: JSON.stringify({ model, prompt: 'a small red apple', n:1, size:'256x256' })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || (data.error && data.error.message)){
+      throw new Error(data.error?.message || ('HTTP '+res.status));
+    }
+    if(data.data && data.data[0]){
+      showToast('✅ 图像 Key 有效');
+    }else{
+      throw new Error('响应格式异常');
+    }
+  }catch(e){
+    let msg = e.message || '检测失败';
+    if(/Failed to fetch|fetch|NetworkError/i.test(msg)) msg = '网络失败，检查图像接口地址';
+    showToast('❌ '+msg);
+  }
 }
 function onCfgModelChange(){
   const v = $('#cfgModel').value;
@@ -1306,6 +1666,13 @@ function saveSettings(){
   state.aiConfig.videoKey = $('#cfgVideoKey').value.trim();
   state.aiConfig.videoBaseUrl = ($('#cfgVideoBase').value.trim()||'https://api.minimax.io');
   state.aiConfig.videoModel = ($('#cfgVideoModel').value.trim()||'MiniMax-H3');
+  // 图像生成配置
+  state.aiConfig.image = {
+    provider: $('#cfgImgProvider').value,
+    apiKey: $('#cfgImgKey').value.trim(),
+    baseUrl: ($('#cfgImgBase').value.trim()||'https://api.openai.com/v1'),
+    model: ($('#cfgImgModel').value.trim()||'gpt-image-1')
+  };
   state.sync = {
     enabled: $('#cfgSyncEnabled').checked,
     token: $('#cfgSyncToken').value.trim(),
