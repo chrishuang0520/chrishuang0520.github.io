@@ -548,7 +548,7 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
       <input class="input" id="cfgVideoModel" placeholder="MiniMax-H3">
     </div>
     <div style="border-top:1px solid var(--border);margin:16px 0 2px;padding-top:14px;font-size:13px;font-weight:700;color:var(--primary)">图像生成（公众号配图）</div>
-    <p class="section-tip" style="font-size:12px;color:var(--muted);margin:6px 0 10px">支持 OpenAI 兼容 /images/generations 端点，如 OpenAI、智谱、通义万相、自建服务。</p>
+    <p class="section-tip" style="font-size:12px;color:var(--muted);margin:6px 0 10px">支持 MiniMax image-01（便宜·推荐，可复用 MiniMax 文本/视频同一把 Key）以及 OpenAI 兼容 /images/generations（OpenAI、智谱、通义万相等）。</p>
     <div class="field" style="margin-top:10px">
       <label>提供商</label>
       <select class="input" id="cfgImgProvider" onchange="onImgProviderChange()"></select>
@@ -1561,18 +1561,19 @@ function copyRichHTML(html){
   }
 }
 /* ====== 图像生成 ====== */
-// 图像生成提供商配置（OpenAI 兼容的 /images/generations 端点）
+// 图像生成提供商配置（api:'minimax' 走 MiniMax 专用 /image_generation；api:'openai' 走 OpenAI 兼容 /images/generations）
 const IMAGE_PROVIDERS = [
-  {key:'openai_img', name:'OpenAI gpt-image-1', baseUrl:'https://api.openai.com/v1', model:'gpt-image-1'},
-  {key:'openai_dalle3', name:'OpenAI DALL-E 3', baseUrl:'https://api.openai.com/v1', model:'dall-e-3'},
-  {key:'zhipu_img', name:'智谱 CogView-4', baseUrl:'https://open.bigmodel.cn/api/paas/v4', model:'cogview-4'},
-  {key:'aliyun_wanxiang', name:'通义万相', baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1', model:'wanx-v1'},
-  {key:'custom_img', name:'自定义（OpenAI 兼容）', baseUrl:'', model:''}
+  {key:'minimax_img', name:'MiniMax image-01（推荐·便宜）', baseUrl:'https://api.minimaxi.com/v1', model:'image-01', api:'minimax'},
+  {key:'openai_img', name:'OpenAI gpt-image-1', baseUrl:'https://api.openai.com/v1', model:'gpt-image-1', api:'openai'},
+  {key:'openai_dalle3', name:'OpenAI DALL-E 3', baseUrl:'https://api.openai.com/v1', model:'dall-e-3', api:'openai'},
+  {key:'zhipu_img', name:'智谱 CogView-4', baseUrl:'https://open.bigmodel.cn/api/paas/v4', model:'cogview-4', api:'openai'},
+  {key:'aliyun_wanxiang', name:'通义万相', baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1', model:'wanx-v1', api:'openai'},
+  {key:'custom_img', name:'自定义（OpenAI 兼容）', baseUrl:'', model:'', api:'openai'}
 ];
 
 // 给公众号文章某位置生成图片。key='__cover__' 为封面，否则为 section index
 async function genArticleImg(key, prompt){
-  const cfg = state.aiConfig.image || {provider:'openai_img', apiKey:'', baseUrl:'', model:''};
+  const cfg = state.aiConfig.image || {provider:'minimax_img', apiKey:'', baseUrl:'', model:''};
   const prov = IMAGE_PROVIDERS.find(p=>p.key===cfg.provider) || IMAGE_PROVIDERS[0];
   const apiKey = cfg.apiKey;
   const baseUrl = (cfg.baseUrl || prov.baseUrl).replace(/\/+$/,'');
@@ -1585,16 +1586,32 @@ async function genArticleImg(key, prompt){
   showToast('正在生成配图（约 5-30 秒）…');
   const fullPrompt = `${prompt}. Medical/biomedical illustration style, clean and professional, no text in image, suitable for science article cover.`;
   try{
-    const res = await fetch(baseUrl + '/images/generations', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey },
-      body: JSON.stringify({ model, prompt: fullPrompt, n:1, size:'1024x576' })
-    });
-    const data = await res.json().catch(()=>({}));
-    if(!res.ok || (data.error && data.error.message)){
-      throw new Error(data.error?.message || ('HTTP '+res.status));
+    let url = '';
+    if(prov.api==='minimax'){
+      // MiniMax 专用端点 /image_generation，响应 data.image_urls[]
+      const res = await fetch(baseUrl + '/image_generation', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey },
+        body: JSON.stringify({ model, prompt: fullPrompt, aspect_ratio:'16:9', response_format:'url', n:1 })
+      });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok || (data.base_resp && data.base_resp.status_code!==0)){
+        throw new Error(data.base_resp?.status_msg || data.error?.message || ('HTTP '+res.status));
+      }
+      url = (data.data && data.data.image_urls && data.data.image_urls[0]) || '';
+    }else{
+      // OpenAI 兼容 /images/generations
+      const res = await fetch(baseUrl + '/images/generations', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey },
+        body: JSON.stringify({ model, prompt: fullPrompt, n:1, size:'1024x576' })
+      });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok || (data.error && data.error.message)){
+        throw new Error(data.error?.message || ('HTTP '+res.status));
+      }
+      url = (data.data && data.data[0] && (data.data[0].url || (data.data[0].b64_json && 'data:image/png;base64,'+data.data[0].b64_json))) || '';
     }
-    const url = (data.data && data.data[0] && (data.data[0].url || (data.data[0].b64_json && 'data:image/png;base64,'+data.data[0].b64_json))) || '';
     if(!url) throw new Error('未拿到图片 URL');
     state.lastArticleImgs = state.lastArticleImgs || {};
     state.lastArticleImgs[key] = url;
@@ -1762,7 +1779,7 @@ function openSettings(){
   fillCfgModelSelect(acct.model);
   $('#cfgVideoKey').value = c.videoKey||''; $('#cfgVideoBase').value = c.videoBaseUrl||''; $('#cfgVideoModel').value = c.videoModel||'';
   // 图像生成配置
-  const img = c.image || {provider:'openai_img',apiKey:'',baseUrl:'https://api.openai.com/v1',model:'gpt-image-1'};
+  const img = c.image || {provider:'minimax_img',apiKey:'',baseUrl:'https://api.minimaxi.com/v1',model:'image-01'};
   formImageProvider = img.provider;
   $('#cfgImgProvider').innerHTML = IMAGE_PROVIDERS.map(p=>`<option value="${p.key}" ${p.key===img.provider?'selected':''}>${p.name}</option>`).join('');
   $('#cfgImgKey').value = img.apiKey||''; $('#cfgImgBase').value = img.baseUrl||''; $('#cfgImgModel').value = img.model||'';
@@ -1815,20 +1832,32 @@ async function testImageKey(){
   if(!apiKey){ showToast('请先填写图像 API Key'); return; }
   showToast('正在检测图像 Key…');
   try{
-    const res = await fetch(base + '/images/generations', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey },
-      body: JSON.stringify({ model, prompt: 'a small red apple', n:1, size:'256x256' })
-    });
-    const data = await res.json().catch(()=>({}));
-    if(!res.ok || (data.error && data.error.message)){
-      throw new Error(data.error?.message || ('HTTP '+res.status));
-    }
-    if(data.data && data.data[0]){
-      showToast('✅ 图像 Key 有效');
+    let ok = false;
+    if(prov.api==='minimax'){
+      const res = await fetch(base + '/image_generation', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey },
+        body: JSON.stringify({ model, prompt: 'a small red apple', aspect_ratio:'1:1', response_format:'url', n:1 })
+      });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok || (data.base_resp && data.base_resp.status_code!==0)){
+        throw new Error(data.base_resp?.status_msg || data.error?.message || ('HTTP '+res.status));
+      }
+      ok = !!(data.data && data.data.image_urls && data.data.image_urls[0]);
     }else{
-      throw new Error('响应格式异常');
+      const res = await fetch(base + '/images/generations', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey },
+        body: JSON.stringify({ model, prompt: 'a small red apple', n:1, size:'256x256' })
+      });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok || (data.error && data.error.message)){
+        throw new Error(data.error?.message || ('HTTP '+res.status));
+      }
+      ok = !!(data.data && data.data[0]);
     }
+    if(ok){ showToast('✅ 图像 Key 有效'); }
+    else { throw new Error('响应格式异常'); }
   }catch(e){
     let msg = e.message || '检测失败';
     if(/Failed to fetch|fetch|NetworkError/i.test(msg)) msg = '网络失败，检查图像接口地址';
@@ -1897,8 +1926,8 @@ function saveSettings(){
   state.aiConfig.image = {
     provider: $('#cfgImgProvider').value,
     apiKey: $('#cfgImgKey').value.trim(),
-    baseUrl: ($('#cfgImgBase').value.trim()||'https://api.openai.com/v1'),
-    model: ($('#cfgImgModel').value.trim()||'gpt-image-1')
+    baseUrl: ($('#cfgImgBase').value.trim()||'https://api.minimaxi.com/v1'),
+    model: ($('#cfgImgModel').value.trim()||'image-01')
   };
   state.sync = {
     enabled: $('#cfgSyncEnabled').checked,
