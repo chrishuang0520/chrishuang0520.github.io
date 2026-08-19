@@ -980,8 +980,11 @@ async function generate(){
     showToast('生成完成');
   }catch(e){
     let msg = e.message || '生成失败';
-    if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败，请检查接口地址、API Key 与网络';
-    $('#aiOutBody').innerHTML = `<div class="empty" style="color:var(--danger)">生成失败：${esc(msg)}<br><br>常见原因：① API Key 无效或额度不足 ② 接口地址/模型名填错 ③ 网络受限</div>`;
+    if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败，请检查接口地址与网络';
+    if(/1004|authorization|unauthorized|invalid api key|authentication|401|403|login fail/i.test(msg)){
+      msg = 'API Key 无效或缺失 — 点右上角齿轮，确认 Key 完整（sk- 开头、无空格）、且与所选模型匹配';
+    }
+    $('#aiOutBody').innerHTML = `<div class="empty" style="color:var(--danger)">生成失败：${esc(msg)}</div>`;
   }finally{
     btn.disabled = false;
   }
@@ -1034,7 +1037,10 @@ async function generateVideo(){
     throw new Error('生成超时，请稍后重试');
   }catch(e){
     let msg = e.message || '生成失败';
-    if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败，请检查视频接口地址与 Key';
+    if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败，请检查视频接口地址与网络';
+    if(/1004|authorization|unauthorized|invalid api key|authentication|401|403|login fail/i.test(msg)){
+      msg = '视频 API Key 无效或缺失 — 点右上角齿轮，检查「视频 API Key」是否正确';
+    }
     $('#aiOutBody').innerHTML = `<div class="empty" style="color:var(--danger)">视频生成失败：${esc(msg)}</div>`;
   }finally{
     btn.disabled = false;
@@ -1205,12 +1211,22 @@ function saveSettings(){
 function updateAIBadge(){
   const c = state.aiConfig;
   const el = $('#aiModelBadge'); if(!el) return;
+  el.innerHTML = '';
+  const span = t => { const s=document.createElement('span'); s.textContent=t; return s; };
   if(curGenType==='videogen'){
-    el.textContent = '当前视频模型：'+(c.videoModel||'MiniMax-H3') + (c.videoKey?'':'（未配置视频 Key，点右上角齿轮设置）');
+    el.appendChild(span('视频模型：'+(c.videoModel||'MiniMax-H3')));
+    el.appendChild(span('　·　'));
+    const ks = span(c.videoKey ? 'Key 已配置（····'+c.videoKey.slice(-4)+'）' : '⚠ 未配置视频 Key，点右上角齿轮');
+    ks.style.color = c.videoKey ? 'var(--success)' : 'var(--danger)';
+    el.appendChild(ks);
     return;
   }
   const p = PROVIDERS.find(x=>x.key===c.provider) || PROVIDERS[0];
-  el.textContent = '当前模型：'+p.name+' · '+(c.model||p.model) + (c.apiKey?'':'（未配置 Key，点右上角齿轮设置）');
+  el.appendChild(span(p.name+' · '+(c.model||p.model)));
+  el.appendChild(span('　·　'));
+  const ks = span(c.apiKey ? 'Key 已配置（····'+c.apiKey.slice(-4)+'）' : '⚠ 未配置 Key，点右上角齿轮');
+  ks.style.color = c.apiKey ? 'var(--success)' : 'var(--danger)';
+  el.appendChild(ks);
 }
 
 /* ================= 发布排期 ================= */
@@ -1414,7 +1430,7 @@ function exportJSON(){
   a.download = '医研创作台备份_'+todayStr()+'.json';
   a.click();
   URL.revokeObjectURL(a.href);
-  showToast('已导出备份文件');
+  showToast('已导出备份（含 API Key，请妥善保管）');
 }
 function importJSON(input){
   const file = input.files[0]; if(!file) return;
@@ -1425,7 +1441,7 @@ function importJSON(input){
       if(!d.ideas || !d.schedules || !d.metrics){ throw new Error('格式不正确'); }
       state.ideas = d.ideas; state.schedules = d.schedules; state.metrics = d.metrics;
       if(d.aiConfig) state.aiConfig = d.aiConfig;
-      save(); renderAll(); showToast('导入成功，共 '+state.ideas.length+' 条选题');
+      save(); renderAll(); updateAIBadge(); showToast('导入成功，共 '+state.ideas.length+' 条选题');
     }catch(err){ showToast('导入失败：文件格式不正确'); }
   };
   reader.readAsText(file);
