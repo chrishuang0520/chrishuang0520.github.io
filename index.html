@@ -363,11 +363,13 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
           顶刊文献追踪 · 前沿肿瘤药物
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input class="input" id="paperKeyword" placeholder="加关键词聚焦（英文更准，如：ADC / cholangiocarcinoma / bispecific），留空搜全部" style="width:280px;padding:6px 10px;font-size:13px">
           <select class="input" id="paperRange" style="width:auto;padding:6px 10px;font-size:13px">
             <option value="7">近 7 天</option>
             <option value="30">近 1 个月</option>
             <option value="90">近 3 个月</option>
             <option value="365" selected>近 1 年</option>
+            <option value="730">近 2 年</option>
           </select>
           <button class="btn btn-primary" onclick="searchPapers()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>搜索顶刊论文</button>
         </div>
@@ -991,6 +993,7 @@ function toggleJournal(key){
 async function searchPapers(){
   if(selectedJournals.length===0){ showToast('请至少勾选一种期刊'); return; }
   const rangeDays = parseInt($('#paperRange').value||'365', 10);
+  const kw = ($('#paperKeyword') ? $('#paperKeyword').value.trim() : '');
   $('#paperList').innerHTML = '<div class="paper-empty">正在检索 PubMed…（约 3-8 秒）<br><span class="spinner" style="margin:12px auto"></span></div>';
   const end = new Date();
   const start = addDays(end, -rangeDays);
@@ -1000,7 +1003,8 @@ async function searchPapers(){
   const topic = '(cancer[tiab] OR tumor[tiab] OR tumour[tiab] OR oncology[tiab] OR neoplasm[tiab] OR carcinoma[tiab])' +
     ' AND (drug[tiab] OR therapy[tiab] OR treatment[tiab] OR "clinical trial"[tiab] OR immunotherapy[tiab] OR inhibitor[tiab] OR antibody[tiab] OR "antibody-drug conjugate"[tiab] OR ADC[tiab] OR "small molecule"[tiab] OR efficacy[tiab] OR "overall survival"[tiab] OR "progression-free survival"[tiab] OR "phase 2"[tiab] OR "phase 3"[tiab] OR "phase II"[tiab] OR "phase III"[tiab])';
   const journals = selectedJournals.map(k=>{ const j=PAPER_JOURNALS.find(x=>x.key===k); return j?j.jq:''; }).filter(Boolean).join(' OR ');
-  const term = topic + ' AND (' + journals + ')';
+  // 用户关键词与主题 AND 组合（聚焦细分方向，不影响肿瘤药物领域定位）
+  const term = (kw ? '(' + kw + ') AND ' : '') + topic + ' AND (' + journals + ')';
 
   try{
     // 1. esearch 拿 PMID 列表
@@ -1051,6 +1055,7 @@ async function searchPapers(){
       };
     }).filter(p=>p.title!=='(无标题)');
     renderPapers();
+    showToast(`检索到 ${lastPapers.length} 篇${kw ? '（关键词：' + kw + '）' : ''}，近 ${rangeDays} 天`);
   }catch(e){
     let msg = e.message || '检索失败';
     if(/Failed to fetch|fetch|NetworkError/i.test(msg)) msg = '网络请求失败：无法访问 PubMed（NCBI）。请确认网络可访问 eutils.ncbi.nlm.nih.gov。';
