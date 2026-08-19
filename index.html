@@ -1425,6 +1425,9 @@ function renderAIResult(text){
       $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex';
       $('#aiBatchImgBtn').style.display='none'; $('#aiPackBtn').style.display='inline-flex';
       lastArticleData = null;
+      // 降级：用 markdown 文本渲染（用户至少能看到 AI 写的内容；可视化预览要求 JSON，但 MiniMax M3 等输出格式不可控）
+      const fallbackHtml = '<div class="empty" style="background:var(--bg);padding:12px;border-radius:8px;margin-bottom:10px;border-left:3px solid var(--warning);font-size:13px;color:var(--warning)">⚠ JSON 解析失败，已降级为文本渲染（建议在 AI 设置里切换到 GPT-4o / Claude Sonnet / 智谱 glm-4.7 等严格遵循 JSON 的模型，或在补充要求里写"请严格按 JSON 输出"）。</div>' + renderMdText(text);
+      $('#aiOutBody').innerHTML = fallbackHtml;
       return;
     }
   }
@@ -1439,7 +1442,13 @@ function renderAIResult(text){
     $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
     return;
   }
-  // 公众号以外的通用文本渲染（标题/脚本/通俗化）：mark down 化
+  // 通用文本渲染（标题/脚本/通俗化/降级）：markdown 化
+  const lines = text.split('\n');
+  $('#aiOutBody').innerHTML = renderMdText(lines.join('\n'));
+  $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
+}
+// 抽出来供 article 降级时复用
+function renderMdText(text){
   const lines = text.split('\n');
   let html = '<div class="ai-result">';
   let inList = false;
@@ -1452,8 +1461,7 @@ function renderAIResult(text){
     else { html += `<p>${esc(t)}</p>`; }
   });
   html += '</div>';
-  $('#aiOutBody').innerHTML = html;
-  $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
+  return html;
 }
 
 /* ===== 公众号文章 JSON 解析 + 可视化预览 ===== */
@@ -1463,26 +1471,50 @@ let lastVideoUrl = '';
 // 智能解析：尝试从 text 里提取 JSON 代码块或首段 JSON
 function parseArticleJSON(text){
   if(!text) return null;
-  // 1. 匹配 ```json ... ``` 代码块
-  const m = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  // 0. 剥掉推理模型的 <think>...</think> 思考块（MiniMax M3 / DeepSeek-R1 等）
+  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  if(!cleaned) cleaned = text.trim();
+
+  // 判断一个 JSON 对象是否像我们的"文章结构"
+  const isArticleObj = d => d && typeof d==='object' && typeof d.title==='string' && Array.isArray(d.sections);
+
+  // 1. ```json ... ``` 代码块
+  const m = cleaned.match(/```(?:json|javascript)?\s*(\{[\s\S]*?\})\s*```/i);
   if(m){
-    try{
-      const d = JSON.parse(m[1]);
-      if(d.title && Array.isArray(d.sections)) return d;
-    }catch(e){}
+    try{ const d = JSON.parse(m[1]); if(isArticleObj(d)) return d; }catch(e){}
   }
-  // 2. 尝试整段就是 JSON
-  try{
-    const d = JSON.parse(text.trim());
-    if(d.title && Array.isArray(d.sections)) return d;
-  }catch(e){}
-  // 3. 在文本里找第一个看起来像 JSON 的对象
-  const idx = text.indexOf('{'); const end = text.lastIndexOf('}');
-  if(idx>-1 && end>idx){
-    try{
-      const d = JSON.parse(text.slice(idx, end+1));
-      if(d.title && Array.isArray(d.sections)) return d;
-    }catch(e){}
+  // 2. 整段就是 JSON
+  try{ const d = JSON.parse(cleaned.trim()); if(isArticleObj(d)) return d; }catch(e){}
+  // 3. 用大括号配对扫描，找第一个内部完整、且像文章结构的 JSON 对象
+  let i = 0;
+  while(i < cleaned.length){
+    const j = cleaned.indexOf('{', i);
+    if(j < 0) break;
+    // 找匹配的 }
+    let depth = 0, k = j, inStr = false, esc = false, quote = '';
+    while(k < cleaned.length){
+      const c = cleaned[k];
+      if(inStr){
+        if(esc){ esc = false; }
+        else if(c === '\\'){ esc = true; }
+        else if(c === quote){ inStr = false; }
+      } else {
+        if(c === '"' || c === "'"){ inStr = true; quote = c; }
+        else if(c === '{') depth++;
+        else if(c === '}'){ depth--; if(depth === 0) break; }
+      }
+      k++;
+    }
+    if(depth === 0){
+      const sub = cleaned.slice(j, k+1);
+      try{
+        const d = JSON.parse(sub);
+        if(isArticleObj(d)) return d;
+      }catch(e){}
+      i = k + 1;
+    } else {
+      break;
+    }
   }
   return null;
 }
