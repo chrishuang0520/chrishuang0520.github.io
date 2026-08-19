@@ -534,10 +534,15 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
       <select class="input" id="cfgModel" onchange="onCfgModelChange()"></select>
       <input class="input" id="cfgModelCustom" placeholder="输入自定义模型名" style="display:none;margin-top:6px">
     </div>
-    <div style="border-top:1px solid var(--border);margin:16px 0 2px;padding-top:14px;font-size:13px;font-weight:700;color:var(--primary)">视频生成（MiniMax H3）</div>
+    <div style="border-top:1px solid var(--border);margin:16px 0 2px;padding-top:14px;font-size:13px;font-weight:700;color:var(--primary)">MiniMax 媒体生成（视频 + 图像共用一把 Key）</div>
     <div class="field" style="margin-top:10px">
-      <label>视频 API Key（与文本 Key 独立）</label>
-      <input class="input" id="cfgVideoKey" type="password" placeholder="视频生成的独立 Key">
+      <label>MiniMax 媒体 Key（视频生成 + 图像生成共用）</label>
+      <input class="input" id="cfgMediaKey" type="password" placeholder="填一次，视频和公众号配图都用它">
+    </div>
+    <div style="border-top:1px solid var(--border);margin:14px 0 2px;padding-top:12px;font-size:12px;font-weight:700;color:var(--muted)">视频生成（MiniMax H3）</div>
+    <div class="field" style="margin-top:10px">
+      <label>视频 API Key（可选，留空用上方共用 Key）</label>
+      <input class="input" id="cfgVideoKey" type="password" placeholder="留空则使用共用 Key">
     </div>
     <div class="field">
       <label>视频接口地址</label>
@@ -548,14 +553,14 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
       <input class="input" id="cfgVideoModel" placeholder="MiniMax-H3">
     </div>
     <div style="border-top:1px solid var(--border);margin:16px 0 2px;padding-top:14px;font-size:13px;font-weight:700;color:var(--primary)">图像生成（公众号配图）</div>
-    <p class="section-tip" style="font-size:12px;color:var(--muted);margin:6px 0 10px">支持 MiniMax image-01（便宜·推荐，可复用 MiniMax 文本/视频同一把 Key）以及 OpenAI 兼容 /images/generations（OpenAI、智谱、通义万相等）。</p>
+    <p class="section-tip" style="font-size:12px;color:var(--muted);margin:6px 0 10px">支持 MiniMax image-01（便宜·推荐，可复用上方共用 Key）以及 OpenAI 兼容 /images/generations（OpenAI、智谱、通义万相等）。</p>
     <div class="field" style="margin-top:10px">
       <label>提供商</label>
       <select class="input" id="cfgImgProvider" onchange="onImgProviderChange()"></select>
     </div>
     <div class="field">
-      <label>图像 API Key</label>
-      <input class="input" id="cfgImgKey" type="password" placeholder="用于生图的独立 API Key">
+      <label>图像 API Key（可选，留空用上方共用 Key，仅 MiniMax 生效）</label>
+      <input class="input" id="cfgImgKey" type="password" placeholder="留空则使用共用 Key">
     </div>
     <div class="field">
       <label>图像接口地址</label>
@@ -1317,7 +1322,8 @@ async function generate(){
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 async function generateVideo(){
   const cfg = state.aiConfig;
-  if(!cfg.videoKey){ showToast('请先在 AI 设置里填写「视频 API Key」'); openSettings(); return; }
+  const vKey = cfg.videoKey || cfg.mediaKey;
+  if(!vKey){ showToast('请先在 AI 设置里填写「MiniMax 媒体 Key」或「视频 API Key」'); openSettings(); return; }
   const prompt = $('#aiTopic').value.trim();
   if(!prompt){ showToast('请先输入视频创意描述'); $('#aiTopic').focus(); return; }
   const ratio = $('#videoRatio').value;
@@ -1333,7 +1339,7 @@ async function generateVideo(){
     setStatus('正在提交视频生成任务…');
     const res = await fetch(vBase + '/v2/video_generation', {
       method:'POST',
-      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+cfg.videoKey },
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+vKey },
       body: JSON.stringify({ model: cfg.videoModel||'MiniMax-H3', content:[{type:'text', text: prompt}], resolution, duration, ratio })
     });
     const d = await res.json().catch(()=>({}));
@@ -1343,7 +1349,7 @@ async function generateVideo(){
     const deadline = Date.now() + 6*60*1000;
     while(Date.now() < deadline){
       await sleep(8000);
-      const q = await fetch(vBase + '/v2/query/video_generation/'+taskId, { headers:{'Authorization':'Bearer '+cfg.videoKey} });
+      const q = await fetch(vBase + '/v2/query/video_generation/'+taskId, { headers:{'Authorization':'Bearer '+vKey} });
       const qd = await q.json().catch(()=>({}));
       const body = qd.data || qd;
       const st = String(body.status || '').toLowerCase();
@@ -1575,10 +1581,10 @@ const IMAGE_PROVIDERS = [
 async function genArticleImg(key, prompt){
   const cfg = state.aiConfig.image || {provider:'minimax_img', apiKey:'', baseUrl:'', model:''};
   const prov = IMAGE_PROVIDERS.find(p=>p.key===cfg.provider) || IMAGE_PROVIDERS[0];
-  const apiKey = cfg.apiKey;
+  const apiKey = cfg.apiKey || (prov.api==='minimax' ? (state.aiConfig.mediaKey||'') : '');
   const baseUrl = (cfg.baseUrl || prov.baseUrl).replace(/\/+$/,'');
   const model = cfg.model || prov.model;
-  if(!apiKey){ showToast('请先在 AI 设置里填写「图像生成」API Key'); openSettings(); return; }
+  if(!apiKey){ showToast('请先在 AI 设置里填写「MiniMax 媒体 Key」或「图像 API Key」'); openSettings(); return; }
   if(!prompt){ showToast('该位置无配图描述'); return; }
   const btn = document.activeElement;
   const oldTxt = btn ? btn.innerText : '';
@@ -1777,7 +1783,7 @@ function openSettings(){
   const acct = curAccount();
   $('#cfgKey').value = acct.apiKey; $('#cfgBase').value = acct.baseUrl;
   fillCfgModelSelect(acct.model);
-  $('#cfgVideoKey').value = c.videoKey||''; $('#cfgVideoBase').value = c.videoBaseUrl||''; $('#cfgVideoModel').value = c.videoModel||'';
+  $('#cfgMediaKey').value = c.mediaKey||''; $('#cfgVideoKey').value = c.videoKey||''; $('#cfgVideoBase').value = c.videoBaseUrl||''; $('#cfgVideoModel').value = c.videoModel||'';
   // 图像生成配置
   const img = c.image || {provider:'minimax_img',apiKey:'',baseUrl:'https://api.minimaxi.com/v1',model:'image-01'};
   formImageProvider = img.provider;
@@ -1826,10 +1832,10 @@ function onImgProviderChange(){
 async function testImageKey(){
   const pk = $('#cfgImgProvider').value;
   const prov = IMAGE_PROVIDERS.find(p=>p.key===pk) || IMAGE_PROVIDERS[0];
-  const apiKey = $('#cfgImgKey').value.trim();
+  const apiKey = $('#cfgImgKey').value.trim() || (prov.api==='minimax' ? ($('#cfgMediaKey').value.trim()||'') : '');
   const base = ($('#cfgImgBase').value.trim() || prov.baseUrl).replace(/\/+$/,'');
   const model = $('#cfgImgModel').value.trim() || prov.model;
-  if(!apiKey){ showToast('请先填写图像 API Key'); return; }
+  if(!apiKey){ showToast('请先填写 MiniMax 媒体 Key 或图像 API Key'); return; }
   showToast('正在检测图像 Key…');
   try{
     let ok = false;
@@ -1919,6 +1925,7 @@ function saveSettings(){
     model: (m.trim()||p.model)
   });
   state.aiConfig.provider = key;
+  state.aiConfig.mediaKey = $('#cfgMediaKey').value.trim();
   state.aiConfig.videoKey = $('#cfgVideoKey').value.trim();
   state.aiConfig.videoBaseUrl = ($('#cfgVideoBase').value.trim()||'https://api.minimax.io');
   state.aiConfig.videoModel = ($('#cfgVideoModel').value.trim()||'MiniMax-H3');
