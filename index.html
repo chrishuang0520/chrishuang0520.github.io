@@ -1307,6 +1307,8 @@ async function callLLM(messages, opts){
   const base = (acct.baseUrl||prov.baseUrl).replace(/\/+$/,'');
   const maxTokens = opts.maxTokens || 2600;
   const temperature = (opts.temperature !== undefined) ? opts.temperature : 0.85;
+  // 强制 JSON 输出（OpenAI/DeepSeek/智谱等兼容；MiniMax 等不支持时会被忽略）
+  const useJsonFormat = opts.useJsonFormat === true;
   if(prov.api==='anthropic'){
     const systemMsg = messages.find(m=>m.role==='system')?.content || '';
     const userMsgs = messages.filter(m=>m.role!=='system').map(m=>({role:m.role, content:m.content}));
@@ -1322,11 +1324,29 @@ async function callLLM(messages, opts){
     const res = await fetch(base + '/chat/completions', {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+acct.apiKey },
-      body: JSON.stringify({ model: acct.model||prov.model, messages, temperature, max_tokens: maxTokens, stream:false })
+      body: JSON.stringify({
+        model: acct.model||prov.model,
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+        stream:false,
+        ...(useJsonFormat ? {response_format: {type: 'json_object'}} : {})
+      })
     });
     const data = await res.json().catch(()=>({}));
-    if(!res.ok || !data.choices || !data.choices[0]){ throw new Error(data.error?.message || ('请求失败 HTTP '+res.status)); }
-    return data.choices[0].message.content || '';
+    if(!res.ok || !data.choices || !data.choices[0]){
+      const errMsg = data.error?.message || data.message || ('请求失败 HTTP '+res.status);
+      throw new Error(errMsg);
+    }
+    // 处理推理模型：DeepSeek-R1 / MiniMax M3 等会把思考内容放在 reasoning_content 字段
+    const msg = data.choices[0].message || {};
+    let text = msg.content || '';
+    // 兜底：content 空但有 reasoning_content（说明模型只输出了思考，未生成正文）
+    if(!text && msg.reasoning_content){
+      // 尝试从思考里找 JSON
+      text = msg.reasoning_content;
+    }
+    return text || '';
   }
 }
 async function generate(){
@@ -1344,9 +1364,15 @@ async function generate(){
   $('#aiCopyBtn').style.display='none'; $('#aiSaveBtn').style.display='none'; $('#aiPackBtn').style.display='none';
 
   const {messages} = buildPrompt();
+  // article 模式启用强制 JSON 输出（response_format: json_object）
+  const callOpts = curGenType==='article' ? {useJsonFormat: true} : {};
   try{
-    const text = await callLLM(messages);
-    if(!text){ throw new Error('返回内容为空'); }
+    const text = await callLLM(messages, callOpts);
+    if(!text){
+      // 抛出包含诊断信息的错误
+      const diag = `返回内容为空（可能原因：①模型仅输出思考内容未生成正文 ②max_tokens 不足 ③触发了内容安全过滤）— 模型：${acct.model||prov.model}，请尝试换模型或在补充要求里写"请严格按 JSON 输出"`;
+      throw new Error(diag);
+    }
     lastAIResult = text;
     renderAIResult(lastAIResult);
     showToast('生成完成');
@@ -1361,6 +1387,25 @@ async function generate(){
   }finally{
     btn.disabled = false;
   }
+}
+
+// 用更强指令重试：强制开启 articleStrict，并自动追加"严格 JSON"到补充要求
+async function retryArticleWithStrict(){
+  // 1. 自动开启"公众号专用提示词预设"开关（强制输出 JSON）
+  if(!state.articleStrict){
+    state.articleStrict = true;
+    const cb = document.getElementById('articleStrict');
+    if(cb) cb.checked = true;
+    save();
+  }
+  // 2. 在补充要求里追加更强指令（保留用户原本的补充要求）
+  const extra = $('#aiExtra');
+  const strictHint = '【极重要】你的回复必须只包含一个 ```json 代码块，不要输出任何思考/解释/前言。即使你在思考，也必须把思考放在 <think></think> 里并以 {} 代码块结尾。';
+  if(extra && !extra.value.includes(strictHint)){
+    extra.value = (extra.value.trim() ? extra.value.trim()+'\n' : '') + strictHint;
+  }
+  showToast('已开启强约束模式，重试中…');
+  await generate();
 }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 async function generateVideo(){
@@ -1437,20 +1482,30 @@ function renderAIResult(text){
       $('#aiBatchImgBtn').style.display='inline-flex';
       return;
     }else{
-      // 解析失败：给个清晰提示 + 让用户重试
-      $('#aiOutBody').innerHTML = `<div class="empty" style="padding:40px 20px">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:42px;height:42px;color:var(--danger);margin:0 auto 14px;display:block"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-        <div style="color:var(--danger);font-weight:600">未识别到结构化 JSON 输出</div>
-        <div style="color:var(--muted);font-size:13px;margin-top:8px">公众号图文需要 AI 输出 JSON 格式才能可视化预览。建议换个模型（如 GPT-4o / Claude Sonnet / 智谱 glm-4.7），或在补充要求里写"请严格按 JSON 输出"。</div>
-        <pre style="text-align:left;background:var(--bg);padding:12px;border-radius:8px;margin-top:14px;max-height:240px;overflow:auto;font-size:12px;white-space:pre-wrap">${esc(text.slice(0,1000))}</pre>
+      // 解析失败：给清晰提示 + 让用户重试
+      const preview = text.slice(0, 1500);
+      const charCount = text.length;
+      $('#aiOutBody').innerHTML = `<div class="empty" style="padding:30px 20px;max-width:680px;margin:0 auto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:38px;height:38px;color:var(--warning);margin:0 auto 12px;display:block"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <div style="color:var(--warning);font-weight:600;font-size:15px">JSON 解析失败 — 模型未按 JSON 格式输出</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:8px;line-height:1.6">
+          常见原因：① 用了推理模型（DeepSeek-R1 / MiniMax M3）把思考过程当成了正文输出<br>
+          ② 模型不支持 response_format: json_object<br>
+          ③ 输出被 max_tokens 截断
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="retryArticleWithStrict()">🔁 用更强指令重试</button>
+          <button class="btn" onclick="generate()">↻ 重新生成</button>
+        </div>
+        <details style="margin-top:16px;text-align:left">
+          <summary style="cursor:pointer;color:var(--muted);font-size:12px">查看模型原始输出（前 ${Math.min(charCount,1500)} 字符，共 ${charCount} 字符）</summary>
+          <pre style="background:var(--bg);padding:12px;border-radius:8px;margin-top:10px;max-height:300px;overflow:auto;font-size:11px;white-space:pre-wrap;line-height:1.5">${esc(preview)}</pre>
+        </details>
       </div>`;
       $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex';
       $('#aiBatchImgBtn').style.display='none'; $('#aiPackBtn').style.display='inline-flex';
       lastArticleData = null;
-      // 降级：用 markdown 文本渲染（用户至少能看到 AI 写的内容；可视化预览要求 JSON，但 MiniMax M3 等输出格式不可控）
-      const fallbackHtml = '<div class="empty" style="background:var(--bg);padding:12px;border-radius:8px;margin-bottom:10px;border-left:3px solid var(--warning);font-size:13px;color:var(--warning)">⚠ JSON 解析失败，已降级为文本渲染（建议在 AI 设置里切换到 GPT-4o / Claude Sonnet / 智谱 glm-4.7 等严格遵循 JSON 的模型，或在补充要求里写"请严格按 JSON 输出"）。</div>' + renderMdText(text);
-      $('#aiOutBody').innerHTML = fallbackHtml;
-      return;
+      lastAIResult = text;
     }
   }
   // 视频生成结果
@@ -1493,12 +1548,24 @@ let lastVideoUrl = '';
 // 智能解析：尝试从 text 里提取 JSON 代码块或首段 JSON
 function parseArticleJSON(text){
   if(!text) return null;
-  // 0. 剥掉推理模型的 <think>...</think> 思考块（MiniMax M3 / DeepSeek-R1 等）
-  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-  if(!cleaned) cleaned = text.trim();
 
   // 判断一个 JSON 对象是否像我们的"文章结构"
   const isArticleObj = d => d && typeof d==='object' && typeof d.title==='string' && Array.isArray(d.sections);
+
+  // 0a. 剥掉 <think>...</think> 思考块（DeepSeek-R1 / MiniMax M3 等）
+  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  // 0b. 处理未闭合的 <think>：把 <think> 之后到第一个 { 或 ``` 之前的内容都丢掉
+  if(/<think>/i.test(cleaned) && !/<\/think>/i.test(cleaned)){
+    cleaned = cleaned.replace(/<think>[\s\S]*?(?=\{[\s\S]*?\}|```json)/i, '').trim();
+  }
+  // 0c. 剥掉模型"思考发言"：开篇是"我先想想""The user wants me to"等说明文字时，跳到第一个 { 或 ```json
+  if(!/^\s*[\{`]/.test(cleaned)){
+    const firstJson = cleaned.search(/```json|```javascript|\{/);
+    if(firstJson > 30){
+      // 出现位置很远，前面大概率是思考/解释，砍掉
+      cleaned = cleaned.slice(firstJson).trim();
+    }
+  }
 
   // 1. ```json ... ``` 代码块
   const m = cleaned.match(/```(?:json|javascript)?\s*(\{[\s\S]*?\})\s*```/i);
