@@ -167,7 +167,7 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
 .article-preview{max-width:100%;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",serif;color:#222;line-height:1.8}
 .ap-title{font-size:22px;font-weight:bold;text-align:center;color:#1a1a1a;margin:18px 0 14px;line-height:1.4}
 .ap-cover{margin:14px 0}
-.ap-cover img{width:100%;border-radius:8px;display:block}
+.ap-cover img{width:100%;height:auto;max-height:480px;object-fit:contain;border-radius:8px;display:block}
 .ap-lead,.ap-quote{border-left:3px solid var(--primary);padding:10px 14px;margin:18px 0;color:#444;background:#f5faf7;border-radius:0 6px 6px 0}
 .ap-quote{font-style:italic;color:var(--primary);background:transparent;border-left-width:4px}
 .ap-section{margin:24px 0 8px}
@@ -176,7 +176,7 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
 .ap-points{background:#f6f8f7;padding:12px 14px 12px 32px;border-radius:8px;margin:10px 0;list-style:disc}
 .ap-points li{margin:6px 0;font-size:14.5px}
 .ap-figure{margin:14px 0;text-align:center}
-.ap-figure img{width:100%;border-radius:8px}
+.ap-figure img{width:100%;height:auto;max-height:480px;object-fit:contain;border-radius:8px}
 .ap-figure .ap-prompt{font-size:12px;color:var(--muted);margin:6px 0 4px}
 .ap-img-placeholder{border:2px dashed #d8e2dd;border-radius:10px;padding:30px 14px;text-align:center;color:var(--muted);background:#fafcfb;display:flex;flex-direction:column;align-items:center;gap:10px}
 .ap-img-placeholder.sm{padding:20px 12px}
@@ -448,6 +448,21 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
             <input type="checkbox" id="articleStrict" onchange="onArticleStrict()" style="width:18px;height:18px;flex-shrink:0">
             <span>公众号专用提示词预设（强制输出 JSON，兼容 MiniMax 等自由模型）</span>
           </label>
+        </div>
+        <div class="field" id="outlineField" style="display:none">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="articleOutline" onchange="onOutlineToggle()" style="width:18px;height:18px;flex-shrink:0">
+            <span>提纲先行（先定提纲、编辑确认后，AI 再按提纲写全文）</span>
+          </label>
+        </div>
+        <div class="field" id="outlineBox" style="display:none">
+          <label>文章提纲（可自由编辑）</label>
+          <textarea class="input" id="aiOutline" rows="9" placeholder="两种方式：&#10;1) 点下方「AI 生成提纲」，自动生成后可直接编辑；&#10;2) 直接手动输入你的提纲。&#10;&#10;格式建议：&#10;标题：xxx&#10;一、小标题（要点1；要点2）&#10;二、小标题（要点…）&#10;三、…"></textarea>
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            <button class="btn btn-sm" id="outlineGenBtn" onclick="genOutline()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>AI 生成提纲</button>
+            <button class="btn btn-sm" onclick="clearOutline()">清空提纲</button>
+            <span id="outlineHint" style="font-size:12px;color:var(--muted);align-self:center">确认提纲无误后，点下方「生成内容」按提纲成文</span>
+          </div>
         </div>
         <button class="btn btn-primary" style="width:100%;justify-content:center" id="aiGenBtn" onclick="generate()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg><span id="aiGenBtnText">生成内容</span>
@@ -1248,6 +1263,8 @@ function updateAIPanel(){
   $('#textOnlyFields').style.display = isVideo ? 'none' : '';
   $('#extraField').style.display = isVideo ? 'none' : '';
   $('#strictField').style.display = isArticle ? '' : 'none';
+  $('#outlineField').style.display = isArticle ? '' : 'none';
+  $('#outlineBox').style.display = (isArticle && state.articleOutline) ? '' : 'none';
   $('#aiTopicLabel').textContent = isVideo ? '视频创意描述' : '主题 / 关键词';
   $('#aiTopic').placeholder = isVideo ? '例如：一只实验小鼠的细胞在显微镜下分裂，微观世界，蓝青色科技感，平滑运镜' : '例如：ADC 抗体偶联药物怎么精准打击癌细胞';
   $('#aiGenBtnText').textContent = isVideo ? '生成视频' : '生成内容';
@@ -1256,6 +1273,51 @@ function updateAIPanel(){
 function onArticleStrict(){
   state.articleStrict = $('#articleStrict').checked;
   save();
+}
+// ===== 提纲先行 =====
+function onOutlineToggle(){
+  state.articleOutline = $('#articleOutline').checked;
+  $('#outlineBox').style.display = state.articleOutline ? '' : 'none';
+  save();
+}
+function clearOutline(){
+  const el = $('#aiOutline');
+  if(el) el.value = '';
+  showToast('提纲已清空');
+}
+// 让 AI 生成提纲（纯文本，避免 JSON 解析问题）
+async function genOutline(){
+  const prov = PROVIDERS.find(p=>p.key===state.aiConfig.provider) || PROVIDERS[0];
+  const acct = curAccount();
+  if(!acct.apiKey){ showToast('请先在 AI 设置里填写 '+prov.name+' 的 API Key'); openSettings(); return; }
+  const topic = $('#aiTopic').value.trim();
+  if(!topic){ showToast('请先输入主题/关键词'); $('#aiTopic').focus(); return; }
+  const catDesc = CAT_DESC[$('#aiCat').value] || $('#aiCat').value;
+  const plat = $('#aiPlat').value;
+  const extra = $('#aiExtra').value.trim();
+  const btn = $('#outlineGenBtn');
+  const oldHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px"></span>生成提纲中…';
+  try{
+    const messages = [
+      {role:'system', content:'你是生物医药深度科普作者兼专业公众号编辑，擅长设计结构清晰的文章提纲。只输出提纲纯文本，禁止输出 JSON、代码块或任何解释性文字。'},
+      {role:'user', content:`主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n\n请为这篇文章设计一份提纲，直接输出提纲文本，格式如下（严格逐行，不要任何额外说明）：\n标题：<标题候选，30字内>\n一、<第1节小标题，10字内>（要点：<本节要覆盖的2-3个要点>）\n二、<第2节小标题>（要点：<…>）\n三、…\n四、…\n结尾：<总结与互动方向>\n\n共 3-5 节，每节要点里标注建议引用的数据方向或金句方向。${extra?'\n补充要求：'+extra:''}`}
+    ];
+    const text = await callLLM(messages, {maxTokens: 1200, temperature: 0.8});
+    if(!text) throw new Error('返回内容为空，请换个模型重试');
+    // 剥掉可能的 <think> 块
+    const cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    $('#aiOutline').value = cleaned || text.trim();
+    showToast('提纲已生成，可直接编辑修改 ✓');
+  }catch(e){
+    let msg = e.message || '生成失败';
+    if(/NO_KEY/.test(msg)){ showToast('请先填写 API Key'); openSettings(); return; }
+    showToast('提纲生成失败：'+msg);
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = oldHtml;
+  }
 }
 
 const CAT_DESC = {
@@ -1275,6 +1337,14 @@ function buildPrompt(){
     '禁用医疗广告法绝对化用语（如"根治""治愈率100%""第一""最有效"等）；科普内容需标注"仅供健康科普参考，不构成诊疗建议"；' +
     '临床招募内容不承诺疗效，须提示读者在医生指导下参与，并注明需核实入排标准；BD合作内容不泄露未公开信息。';
   const strictArticle = !!state.articleStrict; // 公众号专用提示词预设开关
+  // 提纲先行：读取提纲编辑框内容（勾选且有内容时注入）
+  let outlineBlock = '';
+  if(curGenType==='article' && state.articleOutline){
+    const ol = $('#aiOutline') ? $('#aiOutline').value.trim() : '';
+    if(ol){
+      outlineBlock = '【用户已确认的文章提纲】写作时必须严格遵循以下提纲：标题使用提纲中的标题（可微调措辞）；章节的数量、顺序、每节小标题与覆盖要点必须与提纲一致，不得自行增删章节或改变顺序；提纲中标注的数据/金句方向要在对应章节体现。提纲如下：\n' + ol;
+    }
+  }
 
   const articleStrictRule = '【硬性输出格式】你只能输出一个合法的 JSON 对象，并且必须放在一个 ```json 代码块里。禁止输出任何 JSON 之外的文字、解释、前言、问候、结语或 Markdown 标题。即使你不确定，也必须输出完整的 JSON 字段（可为空字符串），绝不能输出"好的""以下是"之类的引导语。';
 
@@ -1287,7 +1357,7 @@ function buildPrompt(){
   const usrByType = {
     title: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请生成 10 个爆款标题候选，每行一个，风格多样（疑问式、数字式、悬念式、痛点式、反差式）。${extra?'\n补充要求：'+extra:''}`,
     script: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请输出：1) 标题\n2) 黄金3秒钩子\n3) 正文口播脚本（分镜头）\n4) 结尾 CTA\n5) 封面文案建议。${extra?'\n补充要求：'+extra:''}`,
-    article: `${strictArticle?'⚠️ 只输出一个 ```json 代码块，其中是合法 JSON 对象，不要任何其他文字。\n':''}主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内（无文字插画）"\n    }\n  ]（3-5个 sections）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
+    article: `${strictArticle?'⚠️ 只输出一个 ```json 代码块，其中是合法 JSON 对象，不要任何其他文字。\n':''}主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n${outlineBlock}${outlineBlock?'\n':''}【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内（无文字插画）"\n    }\n  ]（${outlineBlock?'章节数量必须与提纲一致':'3-5个 sections'}）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
     plain: `请把以下内容改写成通俗科普（普通人都能看懂）：\n${topic}\n${extra?'\n补充要求：'+extra:''}`
   };
 
@@ -1356,7 +1426,11 @@ async function generate(){
   if(!acct.apiKey){ showToast('请先在 AI 设置里填写 '+prov.name+' 的 API Key'); openSettings(); return; }
   const topic = $('#aiTopic').value.trim();
   if(!topic){ showToast('请先输入主题/关键词'); $('#aiTopic').focus(); return; }
-
+  // 提纲先行模式下，提纲为空时给提示（不阻止生成）
+  if(curGenType==='article' && state.articleOutline){
+    const ol = $('#aiOutline') ? $('#aiOutline').value.trim() : '';
+    if(!ol) showToast('提示：提纲为空，将不按提纲直接成文（可点「AI 生成提纲」或手动输入）');
+  }
   $('#aiBatchImgBtn').style.display='none';
   const btn = $('#aiGenBtn');
   btn.disabled = true;
@@ -1620,6 +1694,7 @@ function imgActionBar(key, prompt, currentProvider){
     <textarea class="ap-prompt-input" id="imgPrompt_${key=== '__cover__'?'cover':key}" placeholder="修改配图提示词">${esc(prompt||'')}</textarea>
     <select id="imgModel_${key==='__cover__'?'cover':key}">${imgProviderOptions(sel)}</select>
     <button class="btn btn-sm btn-primary" onclick="regenArticleImg('${key}')">重新生成</button>
+    <button class="btn btn-sm" onclick="uploadArticleImg('${key}')">⬆ 上传替换</button>
     <button class="btn btn-sm btn-danger" onclick="delArticleImg('${key}')">删除配图</button>
   </div>`;
 }
@@ -1640,7 +1715,7 @@ function renderArticlePreview(d){
   const coverProv = (state.aiConfig.image&&state.aiConfig.image.provider)||'minimax_img';
   h += `<div class="ap-cover" data-cover="${esc(d.coverPrompt||'')}">${
     coverImg? `<img src="${esc(coverImg)}" alt="封面">${imgActionBar('__cover__', d.coverPrompt||'', coverProv)}`
-    : `<div class="ap-img-placeholder"><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><path d='M21 15l-5-5L5 21'/></svg><div class="ap-prompt">封面图：${esc(d.coverPrompt||'建议：与文章主题相关的医学插画')}</div><button class="btn btn-sm" onclick="genArticleImg('__cover__','${esc(d.coverPrompt||'').replace(/'/g,"\\'")}')">为封面配图</button></div>`
+    : `<div class="ap-img-placeholder"><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><path d='M21 15l-5-5L5 21'/></svg><div class="ap-prompt">封面图：${esc(d.coverPrompt||'建议：与文章主题相关的医学插画')}</div><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><button class="btn btn-sm" onclick="genArticleImg('__cover__','${esc(d.coverPrompt||'').replace(/'/g,"\\'")}')">AI 生成封面</button><button class="btn btn-sm" onclick="uploadArticleImg('__cover__')">⬆ 上传图片</button></div></div>`
   }</div>`;
   // 3. 导语
   if(d.lead) h += `<blockquote class="ap-lead" ${editing?'contenteditable="true" onblur="saveArticleField(\'lead\',this.innerText)"':''}>${esc(d.lead)}</blockquote>`;
@@ -1658,7 +1733,7 @@ function renderArticlePreview(d){
     const secProv = (state.aiConfig.image&&state.aiConfig.image.provider)||'minimax_img';
     h += `<div class="ap-figure" data-prompt="${esc(sec.imagePrompt||'')}">${
       secImg? `<img src="${esc(secImg)}" alt="配图">${imgActionBar(String(i), sec.imagePrompt||'', secProv)}`
-      : `<div class="ap-img-placeholder sm"><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><path d='M21 15l-5-5L5 21'/></svg><div class="ap-prompt">配图：${esc(sec.imagePrompt||'与本节内容相关的插画')}</div><button class="btn btn-sm" onclick="genArticleImg('${i}','${esc(sec.imagePrompt||'').replace(/'/g,"\\'")}')">为这节配图</button></div>`
+      : `<div class="ap-img-placeholder sm"><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='8.5' cy='8.5' r='1.5'/><path d='M21 15l-5-5L5 21'/></svg><div class="ap-prompt">配图：${esc(sec.imagePrompt||'与本节内容相关的插画')}</div><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><button class="btn btn-sm" onclick="genArticleImg('${i}','${esc(sec.imagePrompt||'').replace(/'/g,"\\'")}')">AI 生成本节配图</button><button class="btn btn-sm" onclick="uploadArticleImg('${i}')">⬆ 上传图片</button></div></div>`
     }</div>`;
     h += `</div>`;
   });
@@ -1847,6 +1922,79 @@ function delArticleImg(key){
   showToast('已删除配图，可重新生成');
 }
 
+// ===== 本地上传配图 =====
+// 选择文件 → FileReader → 自动压缩适配 → 存入文章配图位
+function uploadArticleImg(key){
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.style.display = 'none';
+  input.onchange = ()=>{
+    const file = input.files && input.files[0];
+    if(!file) return;
+    if(!/^image\//.test(file.type)){ showToast('请选择图片文件（jpg/png/webp/gif 等）'); return; }
+    if(file.size > 25*1024*1024){ showToast('图片太大（超过 25MB），请先压缩再上传'); return; }
+    showToast('正在处理图片…');
+    const reader = new FileReader();
+    reader.onload = ()=> compressImage(reader.result, key);
+    reader.onerror = ()=> showToast('读取文件失败，请重试');
+    reader.readAsDataURL(file);
+  };
+  document.body.appendChild(input);
+  input.click();
+  // 清理临时 input
+  setTimeout(()=>{ if(input.parentNode) input.parentNode.removeChild(input); }, 60000);
+}
+
+// 压缩图片：限制最大边 1600px、jpeg 质量 0.85；小图/透明 png 尽量保真
+function compressImage(dataUrl, key){
+  const img = new Image();
+  img.onload = ()=>{
+    try{
+      let out = dataUrl;
+      const isPng = /^data:image\/png/i.test(dataUrl);
+      const rawLen = dataUrl.length;
+      const MAX_SIDE = 1600;
+      const needsResize = img.width > MAX_SIDE || img.height > MAX_SIDE;
+      if(rawLen < 250*1024 && !needsResize){
+        // 小图直接使用，保留原样
+        out = dataUrl;
+      } else {
+        let w = img.width, h = img.height;
+        if(needsResize){
+          const r = Math.min(MAX_SIDE/w, MAX_SIDE/h);
+          w = Math.round(w*r); h = Math.round(h*r);
+        }
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d');
+        if(isPng){
+          // png 保留透明通道
+          ctx.drawImage(img, 0, 0, w, h);
+          out = cv.toDataURL('image/png');
+          // png 压缩后仍过大（截图类照片型 png）→ 退化 jpeg
+          if(out.length > 900*1024){ out = cv.toDataURL('image/jpeg', 0.85); }
+        } else {
+          ctx.drawImage(img, 0, 0, w, h);
+          out = cv.toDataURL('image/jpeg', 0.85);
+        }
+      }
+      state.lastArticleImgs = state.lastArticleImgs || {};
+      state.lastArticleImgs[key] = out;
+      save();
+      if(lastArticleData){
+        $('#aiOutBody').innerHTML = renderArticlePreview(lastArticleData);
+        $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
+      }
+      showToast('图片已上传，尺寸已自动适配 ✓');
+    }catch(e){
+      showToast('图片处理失败：'+(e.message||'未知错误'));
+    }
+  };
+  img.onerror = ()=> showToast('图片解析失败，文件可能已损坏');
+  img.src = dataUrl;
+}
+
 // 切换文章编辑模式
 function toggleArticleEdit(){
   state.articleEditing = !state.articleEditing;
@@ -1878,11 +2026,14 @@ function saveArticleSection(index, field, value){
 // 批量为封面+所有 sections 配图
 async function genArticleAllImgs(){
   if(!lastArticleData){ showToast('请先生成文章'); return; }
-  const items = [{key:'__cover__', prompt: lastArticleData.coverPrompt || lastArticleData.title}];
+  const imgs = state.lastArticleImgs || {};
+  const items = [];
+  if(!imgs['__cover__']) items.push({key:'__cover__', prompt: lastArticleData.coverPrompt || lastArticleData.title});
   (lastArticleData.sections||[]).forEach((sec,i)=>{
-    if(sec.imagePrompt) items.push({key:String(i), prompt: sec.imagePrompt});
+    if(sec.imagePrompt && !imgs[String(i)]) items.push({key:String(i), prompt: sec.imagePrompt});
   });
-  showToast(`共需生成 ${items.length} 张图，将依次请求`);
+  if(!items.length){ showToast('所有配图位都已有图片（已跳过，可用"重新生成"或"上传替换"单独更新）'); return; }
+  showToast(`将生成 ${items.length} 张图（已有图片的位置自动跳过）`);
   for(const it of items){
     await genArticleImg(it.key, it.prompt);
   }
@@ -2500,6 +2651,13 @@ function init(){
   updateAIBadge();
   renderPaperJournals();
   $('#articleStrict').checked = !!state.articleStrict;
+  const olCb = $('#articleOutline');
+  if(olCb){
+    olCb.checked = !!state.articleOutline;
+    const olTa = $('#aiOutline');
+    if(olTa && state.outlineText) olTa.value = state.outlineText;
+    olTa.addEventListener('blur', ()=>{ state.outlineText = olTa.value; save(); });
+  }
   renderAll();
   // 云同步：已启用则拉取云端数据，否则显示本地存储
   if(state.sync && state.sync.enabled && state.sync.token){ syncPull(); }
