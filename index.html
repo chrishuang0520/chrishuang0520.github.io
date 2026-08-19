@@ -394,11 +394,77 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
           <label>内容类型</label>
           <div class="gen-type" id="genType"></div>
         </div>
-        <div class="field">
+        <div class="field" id="aiTopicField">
           <label id="aiTopicLabel">主题 / 关键词</label>
           <input class="input" id="aiTopic" placeholder="例如：ADC 抗体偶联药物怎么精准打击癌细胞">
         </div>
         <div id="videoParams" style="display:none">
+          <!-- 步骤 1：创意输入 + AI 完善 -->
+          <div class="field" style="border-left:3px solid var(--primary);padding-left:10px;margin-bottom:14px">
+            <label style="display:flex;align-items:center;gap:6px">① 创意输入（简短想法）<span class="step-hint" style="font-size:11px;color:var(--muted);font-weight:normal">· AI 将帮你扩展成详细创意</span></label>
+            <textarea class="input" id="videoIdea" rows="2" placeholder="例如：一只实验小鼠的细胞在显微镜下分裂"></textarea>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button class="btn btn-sm" id="videoPolishBtn" onclick="polishVideoIdea()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>AI 完善创意</button>
+              <span id="videoPolishStatus" style="font-size:12px;color:var(--muted);align-self:center"></span>
+            </div>
+          </div>
+          <div class="field" id="videoPolishedBox" style="display:none;border-left:3px solid var(--accent,#0D9488);padding-left:10px;margin-bottom:14px">
+            <label>② 完善后的创意（可继续编辑）</label>
+            <textarea class="input" id="videoPolished" rows="4"></textarea>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button class="btn btn-sm btn-primary" id="videoScriptBtn" onclick="generateVideoScript()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>AI 生成视频脚本（分镜+旁白）</button>
+              <span style="font-size:12px;color:var(--muted);align-self:center">脚本会作为视频生成参考</span>
+            </div>
+          </div>
+          <div class="field" id="videoScriptBox" style="display:none;border-left:3px solid #8B5CF6;padding-left:10px;margin-bottom:14px">
+            <label>③ 视频脚本（每镜画面+旁白，可编辑）</label>
+            <div id="videoScriptList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;max-height:280px;overflow:auto"></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-sm" onclick="regenVideoScript()">🔁 重新生成</button>
+              <button class="btn btn-sm" onclick="copyVideoScript()">📋 复制全部</button>
+            </div>
+          </div>
+          <div class="field" id="videoAudioBox" style="display:none;border-left:3px solid #F59E0B;padding-left:10px;margin-bottom:14px">
+            <label>④ 配音与背景音乐</label>
+            <div class="form-row">
+              <div class="field">
+                <label>配音音色（浏览器内置 TTS 试听）</label>
+                <select class="input" id="voiceSelect"></select>
+              </div>
+              <div class="field">
+                <label>语速 <span id="voiceRateVal" style="color:var(--muted);font-weight:normal">1.0x</span></label>
+                <input type="range" class="input" id="voiceRate" min="0.6" max="1.6" step="0.05" value="1.0" style="padding:6px" oninput="document.getElementById('voiceRateVal').textContent=parseFloat(this.value).toFixed(2)+'x'">
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;margin-bottom:10px">
+              <button class="btn btn-sm" onclick="previewVoice()">▶ 试听配音</button>
+              <button class="btn btn-sm" onclick="stopVoice()">⏹ 停止</button>
+              <button class="btn btn-sm" onclick="copyNarrationText()">📋 复制旁白文本</button>
+              <button class="btn btn-sm" onclick="downloadNarrationText()">⬇ 下载旁白 .txt</button>
+              <span style="font-size:11px;color:var(--muted);align-self:center">（音频文件请用系统 TTS / 剪映文本朗读生成）</span>
+            </div>
+            <div class="form-row">
+              <div class="field">
+                <label>背景音乐风格</label>
+                <select class="input" id="bgmStyle">
+                  <option value="none">无 BGM（仅配音）</option>
+                  <option value="calm">轻音乐（钢琴/轻柔，适合科普）</option>
+                  <option value="tech">科技感（电子/节拍，适合前沿研究）</option>
+                  <option value="warm">温暖治愈（弦乐/民谣，适合患者故事）</option>
+                  <option value="energetic">鼓舞人心（鼓点+上升，适合振奋）</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>BGM 音量 <span id="bgmVolVal" style="color:var(--muted);font-weight:normal">30%</span></label>
+                <input type="range" class="input" id="bgmVol" min="0" max="1" step="0.05" value="0.3" style="padding:6px" oninput="document.getElementById('bgmVolVal').textContent=Math.round(this.value*100)+'%'">
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-sm" onclick="previewBGM()">▶ 试听 BGM（30秒循环）</button>
+              <button class="btn btn-sm" onclick="stopBGM()">⏹ 停止</button>
+              <button class="btn btn-sm" onclick="downloadBGM()">⬇ 下载 BGM .wav</button>
+            </div>
+          </div>
           <div class="form-row">
             <div class="field">
               <label>画幅比例</label>
@@ -1401,6 +1467,7 @@ function updateAIPanel(){
   const isVideo = curGenType==='videogen';
   const isArticle = curGenType==='article';
   $('#videoParams').style.display = isVideo ? '' : 'none';
+  $('#aiTopicField').style.display = isVideo ? 'none' : ''; // 视频模式用 #videoIdea 替代
   $('#textOnlyFields').style.display = isVideo ? 'none' : '';
   $('#extraField').style.display = isVideo ? 'none' : '';
   $('#strictField').style.display = isArticle ? '' : 'none';
@@ -1410,6 +1477,7 @@ function updateAIPanel(){
   $('#aiTopic').placeholder = isVideo ? '例如：一只实验小鼠的细胞在显微镜下分裂，微观世界，蓝青色科技感，平滑运镜' : '例如：ADC 抗体偶联药物怎么精准打击癌细胞';
   $('#aiGenBtnText').textContent = isVideo ? '生成视频' : '生成内容';
   updateAIBadge();
+  if(isVideo) loadVoices();
 }
 function onArticleStrict(){
   state.articleStrict = $('#articleStrict').checked;
@@ -1634,11 +1702,345 @@ async function retryArticleWithStrict(){
   await generate();
 }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+// ==== 视频创作：三步流程 ====
+let videoScriptData = []; // {timeStart, timeEnd, scene, narration, prompt}
+let voiceUtterance = null;
+
+// 把简短想法扩展为详细创意描述
+async function polishVideoIdea(){
+  const raw = ($('#videoIdea').value || '').trim();
+  if(!raw){ showToast('请先在①里写一句简短的创意'); $('#videoIdea').focus(); return; }
+  const prov = PROVIDERS.find(p=>p.key===state.aiConfig.provider) || PROVIDERS[0];
+  if(!curAccount().apiKey){ showToast('请先在 AI 设置里填写 '+prov.name+' 的 API Key'); openSettings(); return; }
+  const btn = $('#videoPolishBtn');
+  const oldHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px"></span>完善中…';
+  $('#videoPolishStatus').textContent = 'AI 正在丰富画面、镜头、风格…';
+  try{
+    const messages = [
+      {role:'system', content:'你是生物医药短视频创意策划。擅长把一句简短想法扩展为画面感强、镜头清晰、适合 AI 视频生成的详细创意描述。输出简洁的中文段落（200-400字），禁止 markdown 标题/列表。'},
+      {role:'user', content:`原始想法：${raw}\n\n请扩展为详细创意描述，包括：1)开场镜头 2)主体画面与运镜（推/拉/摇/跟） 3)色调与光影 4)关键细节（细胞/分子/器官等具体场景） 5)结尾画面。只输出创意描述段落本身，不要其他说明。`}
+    ];
+    const text = await callLLM(messages, {maxTokens: 1000, temperature: 0.85});
+    if(!text) throw new Error('返回内容为空');
+    const cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
+    $('#videoPolished').value = cleaned || text.trim();
+    $('#videoPolishedBox').style.display = '';
+    $('#videoScriptBox').style.display = 'none';
+    $('#videoAudioBox').style.display = 'none';
+    $('#videoPolishStatus').textContent = '✓ 完善完成，可继续编辑后生成脚本';
+    showToast('创意已完善 ✓');
+  }catch(e){
+    let msg = e.message || '完善失败';
+    if(/NO_KEY/.test(msg)){ showToast('请先填写 API Key'); openSettings(); return; }
+    showToast('完善失败：'+msg);
+    $('#videoPolishStatus').textContent = '';
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = oldHtml;
+  }
+}
+
+// 基于完善后的创意生成分镜脚本
+async function generateVideoScript(){
+  const polished = ($('#videoPolished').value || '').trim();
+  if(!polished){ showToast('请先完善创意（②）'); return; }
+  const prov = PROVIDERS.find(p=>p.key===state.aiConfig.provider) || PROVIDERS[0];
+  if(!curAccount().apiKey){ showToast('请先在 AI 设置里填写 '+prov.name+' 的 API Key'); openSettings(); return; }
+  const duration = +$('#videoDuration').value || 10;
+  // 估算分镜数：每镜 2-3 秒，总 3-6 镜
+  const sceneCount = Math.max(3, Math.min(6, Math.round(duration / 2.5)));
+  const btn = $('#videoScriptBtn');
+  const oldHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px"></span>生成中…';
+  showToast('AI 正在分镜（约 10-20 秒）…');
+  try{
+    const messages = [
+      {role:'system', content:'你是生物医药短视频分镜师。擅长把创意拆成时间轴清晰、镜头明确的分镜脚本，输出严格 JSON。'},
+      {role:'user', content:`完善创意：${polished}\n视频总时长：${duration}秒\n\n请拆成 ${sceneCount} 个分镜（首尾相接覆盖总时长），输出严格 JSON，字段说明：\n[\n  {\n    "timeStart": "00:00",\n    "timeEnd": "00:03",\n    "scene": "本镜画面描述（10-30字）",\n    "narration": "本镜旁白（口播一句，15-30字，通俗有节奏）",\n    "prompt": "本镜给 AI 视频模型的英文 prompt（10-25字，含主体+运镜+风格）"\n  }\n]\n\n只输出 \`\`\`json 代码块，禁止任何其他文字。`}
+    ];
+    const text = await callLLM(messages, {maxTokens: 1500, temperature: 0.8, useJsonFormat: true});
+    if(!text) throw new Error('返回内容为空');
+    const data = parseArticleJSON(text) || parseGenericJSON(text);
+    let scenes = null;
+    if(Array.isArray(data)) scenes = data;
+    else if(data && Array.isArray(data.scenes)) scenes = data.scenes;
+    else if(data && Array.isArray(data.shots)) scenes = data.shots;
+    if(!scenes) throw new Error('未解析出分镜数组');
+    // 时间戳校正
+    let cursor = 0;
+    const per = duration / scenes.length;
+    scenes.forEach((s,i)=>{
+      s.timeStart = s.timeStart || fmtSec(cursor);
+      s.timeEnd = s.timeEnd || fmtSec(Math.min(duration, cursor + per));
+      cursor = Math.min(duration, cursor + per);
+    });
+    videoScriptData = scenes;
+    renderVideoScript();
+    $('#videoScriptBox').style.display = '';
+    $('#videoAudioBox').style.display = '';
+    showToast('脚本已生成 ✓');
+  }catch(e){
+    let msg = e.message || '生成失败';
+    if(/NO_KEY/.test(msg)){ showToast('请先填写 API Key'); openSettings(); return; }
+    showToast('脚本生成失败：'+msg);
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = oldHtml;
+  }
+}
+function parseGenericJSON(text){
+  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if(m){ try{ return JSON.parse(m[1].trim()); }catch(e){} }
+  try{ return JSON.parse(text.trim()); }catch(e){ return null; }
+}
+function fmtSec(sec){
+  sec = Math.round(sec);
+  const m = String(Math.floor(sec/60)).padStart(2,'0');
+  const s = String(sec%60).padStart(2,'0');
+  return m+':'+s;
+}
+function renderVideoScript(){
+  const list = $('#videoScriptList');
+  if(!list) return;
+  list.innerHTML = videoScriptData.map((s,i)=>`
+    <div class="vs-scene" data-i="${i}" style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--bg)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-weight:700;color:var(--primary)">第 ${i+1} 镜</span>
+        <span style="font-size:12px;color:var(--muted);font-family:monospace">${esc(s.timeStart||'')} → ${esc(s.timeEnd||'')}</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-sm" title="删除该镜" onclick="delVideoScene(${i})"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+      </div>
+      <div class="field" style="margin-bottom:6px"><label style="font-size:11px">画面</label><input class="input" data-k="scene" value="${esc(s.scene||'')}" oninput="videoScriptData[${i}].scene=this.value"></div>
+      <div class="field" style="margin-bottom:6px"><label style="font-size:11px">旁白</label><input class="input" data-k="narration" value="${esc(s.narration||'')}" oninput="videoScriptData[${i}].narration=this.value"></div>
+      <div class="field" style="margin-bottom:0"><label style="font-size:11px">AI 视频 prompt</label><input class="input" data-k="prompt" value="${esc(s.prompt||'')}" oninput="videoScriptData[${i}].prompt=this.value" style="font-family:monospace;font-size:12px"></div>
+    </div>
+  `).join('');
+}
+function delVideoScene(i){ videoScriptData.splice(i,1); renderVideoScript(); }
+function regenVideoScript(){ generateVideoScript(); }
+function copyVideoScript(){
+  if(!videoScriptData.length){ showToast('没有可复制的脚本'); return; }
+  const txt = videoScriptData.map((s,i)=>`第 ${i+1} 镜  [${s.timeStart} → ${s.timeEnd}]\n画面：${s.scene}\n旁白：${s.narration}\nPrompt：${s.prompt}`).join('\n\n');
+  navigator.clipboard.writeText(txt).then(()=>showToast('脚本已复制 ✓')).catch(()=>showToast('复制失败，请手动选中'));
+}
+
+// ==== 配音（TTS 试听 + 旁白文本复制/下载）====
+function loadVoices(){
+  const sel = $('#voiceSelect');
+  if(!sel) return;
+  if(!('speechSynthesis' in window)){ sel.innerHTML = '<option>浏览器不支持 TTS</option>'; return; }
+  // 触发 voices 加载
+  let voices = speechSynthesis.getVoices();
+  if(!voices.length){
+    speechSynthesis.onvoiceschanged = ()=> fillVoiceOptions();
+  }
+  fillVoiceOptions();
+}
+function fillVoiceOptions(){
+  const sel = $('#voiceSelect'); if(!sel) return;
+  const voices = speechSynthesis.getVoices();
+  if(!voices.length){ sel.innerHTML = '<option value="">浏览器尚未加载声音（可稍候重试）</option>'; return; }
+  // 优先中文（zh）/ 英文（en）
+  const sorted = [...voices].sort((a,b)=>{
+    const al = (a.lang||'').toLowerCase();
+    const bl = (b.lang||'').toLowerCase();
+    const aZh = al.startsWith('zh'); const bZh = bl.startsWith('zh');
+    if(aZh!==bZh) return aZh?-1:1;
+    return a.name.localeCompare(b.name);
+  });
+  sel.innerHTML = sorted.map(v=>`<option value="${esc(v.name)}" data-lang="${esc(v.lang)}">${esc(v.name)}（${esc(v.lang)}）</option>`).join('');
+}
+function getNarrationText(){
+  if(!videoScriptData.length) return ($('#videoPolished').value||'').trim();
+  return videoScriptData.map(s=>s.narration).filter(Boolean).join('。');
+}
+function previewVoice(){
+  if(!('speechSynthesis' in window)){ showToast('浏览器不支持 TTS'); return; }
+  const text = getNarrationText();
+  if(!text){ showToast('先生成脚本或有旁白文本'); return; }
+  speechSynthesis.cancel();
+  const sel = $('#voiceSelect');
+  const vname = sel && sel.value;
+  const v = vname ? speechSynthesis.getVoices().find(x=>x.name===vname) : null;
+  const rate = parseFloat($('#voiceRate').value) || 1.0;
+  const u = new SpeechSynthesisUtterance(text);
+  if(v) u.voice = v;
+  u.rate = rate; u.pitch = 1.0; u.lang = (v && v.lang) || 'zh-CN';
+  voiceUtterance = u;
+  speechSynthesis.speak(u);
+  showToast('正在播放配音…');
+}
+function stopVoice(){ if('speechSynthesis' in window){ speechSynthesis.cancel(); showToast('已停止'); } }
+function copyNarrationText(){
+  const txt = getNarrationText();
+  if(!txt){ showToast('没有旁白文本'); return; }
+  navigator.clipboard.writeText(txt).then(()=>showToast('旁白已复制 ✓ 粘贴到剪映/视频软件文本朗读即可'), ()=>showToast('复制失败'));
+}
+function downloadNarrationText(){
+  const txt = getNarrationText();
+  if(!txt){ showToast('没有旁白文本'); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([txt], {type:'text/plain;charset=utf-8'}));
+  a.download = '视频旁白_'+todayStr()+'.txt';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 60000);
+  showToast('已下载旁白 .txt ✓');
+}
+
+// ==== 背景音乐：Web Audio API 程序化合成 30 秒循环 WAV ====
+let bgmAudioCtx = null;
+let bgmSource = null;
+function ensureBgmCtx(){
+  if(!bgmAudioCtx){
+    bgmAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if(bgmAudioCtx.state === 'suspended'){ bgmAudioCtx.resume(); }
+  return bgmAudioCtx;
+}
+function previewBGM(){
+  const style = $('#bgmStyle').value;
+  if(style==='none'){ showToast('当前是无 BGM'); return; }
+  ensureBgmCtx();
+  if(bgmSource){ try{ bgmSource.stop(); }catch(e){} bgmSource = null; }
+  const dur = 30;
+  const sample = renderBGM(style, dur);
+  // 循环播放
+  const src = bgmAudioCtx.createBufferSource();
+  src.buffer = sample; src.loop = true;
+  const gain = bgmAudioCtx.createGain();
+  gain.gain.value = parseFloat($('#bgmVol').value) || 0.3;
+  src.connect(gain).connect(bgmAudioCtx.destination);
+  src.start();
+  bgmSource = src;
+  showToast('BGM 循环播放中…（30秒循环）');
+}
+function stopBGM(){
+  if(bgmSource){ try{ bgmSource.stop(); }catch(e){} bgmSource = null; }
+}
+function downloadBGM(){
+  const style = $('#bgmStyle').value;
+  if(style==='none'){ showToast('当前是无 BGM，无需下载'); return; }
+  const dur = 30;
+  const sample = renderBGM(style, dur);
+  const wav = audioBufferToWav(sample);
+  const blob = new Blob([wav], {type:'audio/wav'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `BGM_${style}_30s.wav`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 60000);
+  showToast('已下载 BGM .wav ✓ （可循环 30 秒）');
+}
+// 不同风格：4 种程序化合成（无版权）
+function renderBGM(style, durSec){
+  const ctx = ensureBgmCtx();
+  const sr = 22050; // 减小文件体积
+  const buf = ctx.createBuffer(2, Math.round(sr*durSec), sr);
+  const L = buf.getChannelData(0), R = buf.getChannelData(1);
+  // 基础频率 / 节奏参数
+  const spec = {
+    calm:      {bpm: 70,  harmony: [261.63, 329.63, 392.00], wave: 'sine',     drum: false, arp: false}, // C 大三和弦
+    tech:      {bpm: 110, harmony: [146.83, 220.00, 293.66], wave: 'square',   drum: true,  arp: true},  // D 小三
+    warm:      {bpm: 80,  harmony: [220.00, 277.18, 329.63], wave: 'triangle', drum: false, arp: false}, // A 小三
+    energetic: {bpm: 128, harmony: [196.00, 246.94, 293.66], wave: 'sawtooth', drum: true,  arp: true}   // G 小三
+  }[style] || {bpm:80, harmony:[261.63,329.63,392], wave:'sine', drum:false, arp:false};
+  const beatSec = 60/spec.bpm;
+  for(let t=0; t<buf.length; t++){
+    const sec = t/sr;
+    const beatPos = sec / beatSec;
+    const beat = Math.floor(beatPos);
+    const beatFrac = beatPos - beat;
+    // 和弦轮转：每 4 拍换一组音
+    const chord = spec.harmony[beat % spec.harmony.length];
+    // 根音持续
+    const baseAmp = 0.18;
+    let s = 0;
+    // 主体和弦（柔和）
+    for(let i=0;i<3;i++){
+      const f = chord * (i+1 === 3 ? 2 : (i+1)); // 根、三、五、八度
+      s += osc(spec.wave, f, sec) * (i===0?1:0.5) * baseAmp;
+    }
+    // 琶音（科技/振奋）
+    if(spec.arp){
+      const arpNote = spec.harmony[(beat*3) % spec.harmony.length] * 2;
+      const arpEnv = Math.exp(-beatFrac*4);
+      s += osc('triangle', arpNote, sec) * arpEnv * 0.15;
+    }
+    // 鼓点（科技/振奋）
+    if(spec.drum){
+      const onBeat = beatFrac < 0.05;
+      if(onBeat){
+        // kick: 低频正弦脉冲
+        s += Math.sin(2*Math.PI*60*sec) * Math.exp(-beatFrac*30) * 0.4;
+        // hat: 偶尔高频噪声
+        if(beat%2===1) s += (Math.random()*2-1) * 0.05;
+      }
+    }
+    // 防爆音
+    s = Math.max(-0.95, Math.min(0.95, s));
+    L[t] = s; R[t] = s;
+  }
+  return buf;
+}
+function osc(type, freq, t){
+  const phase = 2*Math.PI*freq*t;
+  if(type==='sine') return Math.sin(phase);
+  if(type==='square') return Math.sign(Math.sin(phase)) * 0.7;
+  if(type==='triangle') return (2/Math.PI) * Math.asin(Math.sin(phase));
+  if(type==='sawtooth') return 2*(freq*t - Math.floor(freq*t+0.5)) * 0.6;
+  return Math.sin(phase);
+}
+// AudioBuffer → WAV（PCM 16-bit）
+function audioBufferToWav(buffer){
+  const numCh = buffer.numberOfChannels;
+  const sr = buffer.sampleRate;
+  const len = buffer.length * numCh * 2 + 44;
+  const arr = new ArrayBuffer(len);
+  const view = new DataView(arr);
+  const writeStr = (off, s)=>{ for(let i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i)); };
+  // RIFF header
+  writeStr(0,'RIFF');
+  view.setUint32(4, len-8, true);
+  writeStr(8,'WAVE');
+  writeStr(12,'fmt ');
+  view.setUint32(16, 16, true); // fmt size
+  view.setUint16(20, 1, true);  // PCM
+  view.setUint16(22, numCh, true);
+  view.setUint32(24, sr, true);
+  view.setUint32(28, sr*numCh*2, true);
+  view.setUint16(32, numCh*2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36,'data');
+  view.setUint32(40, len-44, true);
+  // PCM data
+  let off = 44;
+  for(let i=0;i<buffer.length;i++){
+    for(let c=0;c<numCh;c++){
+      const s = Math.max(-1, Math.min(1, buffer.getChannelData(c)[i]));
+      view.setInt16(off, s<0?s*0x8000:s*0x7FFF, true);
+      off += 2;
+    }
+  }
+  return arr;
+}
+
 async function generateVideo(){
   const cfg = state.aiConfig;
   if(!cfg.videoKey){ showToast('请先在 AI 设置里填写「视频 API Key」'); openSettings(); return; }
-  const prompt = $('#aiTopic').value.trim();
-  if(!prompt){ showToast('请先输入视频创意描述'); $('#aiTopic').focus(); return; }
+  // 视频生成提示词优先级：脚本整合 > 完善后创意 > 原始想法
+  let prompt = '';
+  if(videoScriptData.length){
+    // 整合：分镜 prompt 用逗号连接，加上整体风格描述
+    const shots = videoScriptData.map(s=>s.prompt).filter(Boolean).join(', ');
+    const polished = ($('#videoPolished').value||'').trim();
+    prompt = (shots || polished || '').slice(0, 800);
+  } else {
+    prompt = ($('#videoPolished').value || $('#videoIdea').value || '').trim();
+  }
+  if(!prompt){ showToast('请先输入视频创意，并完成 AI 完善'); $('#videoIdea').focus(); return; }
   const ratio = $('#videoRatio').value;
   const duration = +$('#videoDuration').value;
   const resolution = $('#videoRes').value;
