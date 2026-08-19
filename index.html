@@ -1447,7 +1447,7 @@ function buildPrompt(){
   const usrByType = {
     title: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请生成 10 个爆款标题候选，每行一个，风格多样（疑问式、数字式、悬念式、痛点式、反差式）。${extra?'\n补充要求：'+extra:''}`,
     script: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请输出：1) 标题\n2) 黄金3秒钩子\n3) 正文口播脚本（分镜头）\n4) 结尾 CTA\n5) 封面文案建议。${extra?'\n补充要求：'+extra:''}`,
-    article: `${strictArticle?'⚠️ 只输出一个 ```json 代码块，其中是合法 JSON 对象，不要任何其他文字。\n':''}主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n${outlineBlock}${outlineBlock?'\n':''}${refBlock}${refBlock?'\n\n':''}【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内（无文字插画）"\n    }\n  ]（${outlineBlock?'章节数量必须与提纲一致':'3-5个 sections'}）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
+    article: `${strictArticle?'⚠️ 只输出一个 ```json 代码块，其中是合法 JSON 对象，不要任何其他文字。\n':''}主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n${outlineBlock}${outlineBlock?'\n':''}${refBlock}${refBlock?'\n\n':''}【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（必须呼应标题与文章核心主题的具体科学场景；医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内，必须紧扣本节正文的具体科学内容（具体分子/细胞/器官/机制场景，禁止泛泛描述），无文字插画"\n    }\n  ]（${outlineBlock?'章节数量必须与提纲一致':'3-5个 sections'}）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
     plain: `请把以下内容改写成通俗科普（普通人都能看懂）：\n${topic}\n${extra?'\n补充要求：'+extra:''}`
   };
 
@@ -1641,6 +1641,10 @@ function renderAIResult(text){
     const parsed = parseArticleJSON(text);
     if(parsed){
       lastArticleData = parsed; // 保存以便配图
+      // 新文章：清空上一篇的配图缓存和编辑状态，避免旧图/旧提示词残留、一键配图被旧图占位跳过
+      state.lastArticleImgs = {};
+      state.articleEditing = false;
+      save();
       $('#aiOutBody').innerHTML = renderArticlePreview(parsed);
       $('#aiCopyBtn').style.display='inline-flex'; $('#aiSaveBtn').style.display='inline-flex'; $('#aiPackBtn').style.display='inline-flex';
       $('#aiBatchImgBtn').style.display='inline-flex';
