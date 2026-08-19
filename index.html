@@ -493,6 +493,21 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
   </div>
 </div>
 
+<!-- ===== 发布文案预览弹窗 ===== -->
+<div class="overlay" id="publishPrevOv">
+  <div class="drawer">
+    <div class="drawer-head">
+      <h3>发布文案预览</h3>
+      <button class="btn" onclick="closePublishPrev()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div id="publishPrevBody" style="font-size:14px;white-space:pre-wrap;word-break:break-word;line-height:1.7;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;max-height:52vh;overflow:auto"></div>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button class="btn" style="flex:1;justify-content:center" onclick="closePublishPrev()">再改改</button>
+      <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="copyPublishPrev()">复制发布</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 选题弹窗 ===== -->
 <div class="overlay" id="ideaOv">
   <div class="drawer">
@@ -1110,6 +1125,7 @@ function buildHashtags(cat, plat){
   if(plat==='公众号'){ return tags.map(t=>'#'+t+'#').join(' '); }
   return tags.map(t=>'#'+t).join(' ');
 }
+let lastPublishText = '';
 function packPublishText(){
   const text = getAIResultText();
   if(!text){ showToast('暂无内容，请先点「生成内容」'); return; }
@@ -1124,8 +1140,16 @@ function packPublishText(){
     out = text.trim() + '\n\n' + tags;
   }
   if(plat==='小红书') out += '\n\n小贴士：配 3-4 张图更易爆，首图加标题字';
-  copyText(out);
-  showToast('发布文案已打包复制，去 '+plat+' 粘贴即可');
+  lastPublishText = out;
+  $('#publishPrevBody').textContent = out;
+  $('#publishPrevOv').classList.add('show');
+}
+function closePublishPrev(){ $('#publishPrevOv').classList.remove('show'); }
+function copyPublishPrev(){
+  if(!lastPublishText){ showToast('暂无内容'); return; }
+  copyText(lastPublishText);
+  closePublishPrev();
+  showToast('发布文案已复制，去 '+$('#aiPlat').value+' 粘贴即可');
 }
 function saveAIAsIdea(){
   try{
