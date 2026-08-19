@@ -443,6 +443,9 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
           <label>补充要求（可选）</label>
           <textarea class="input" id="aiExtra" placeholder="例如：目标受众是患者家属，语气亲切一些"></textarea>
         </div>
+        <div id="refBar" class="field" style="display:none">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px dashed var(--primary);border-radius:10px;background:var(--primary-soft);font-size:13px;color:var(--primary-dark)"></div>
+        </div>
         <div class="field" id="strictField" style="display:none">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="articleStrict" onchange="onArticleStrict()" style="width:18px;height:18px;flex-shrink:0">
@@ -1074,7 +1077,7 @@ function renderPapers(){
       <div class="pj-meta">${esc(p.date)} · PMID: ${esc(p.pmid)}${p.doi?' · DOI: '+esc(p.doi):''}</div>
       ${sumBlock}
       <div class="pj-actions">
-        <button class="btn btn-sm btn-primary" onclick="createArticleFromPaper(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>选此篇创作图文</button>
+        <button class="btn btn-sm btn-primary" onclick="createArticleFromPaper(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>选此篇创作图文（自动抓全文）</button>
         <a class="btn btn-sm" href="https://pubmed.ncbi.nlm.nih.gov/${esc(p.pmid)}/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>原文</a>
       </div>
     </div>`;
@@ -1104,22 +1107,98 @@ async function genPaperSummary(index){
   }
 }
 
-function createArticleFromPaper(index){
+// 抓取论文开放获取全文（Europe PMC）：有 PMC 全文的论文返回纯文本，否则返回空串
+async function fetchPaperFullText(pmid){
+  if(!pmid) return '';
+  try{
+    // 1) 用 PMID 在 Europe PMC 查 PMC 编号
+    const r1 = await fetch('https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:' + pmid + '%20AND%20SRC:MED&resultType=core&format=json');
+    if(!r1.ok) return '';
+    const d1 = await r1.json().catch(()=>({}));
+    const rec = d1.resultList && d1.resultList.result && d1.resultList.result[0];
+    if(!rec || !rec.pmcid) return '';
+    // 2) 拉全文 XML
+    const r2 = await fetch('https://www.ebi.ac.uk/europepmc/webservices/rest/' + rec.pmcid + '/fullTextXML');
+    if(!r2.ok) return '';
+    const xml = await r2.text();
+    if(!xml || xml.length < 500) return '';
+    // 3) 转纯文本：标题保留为 ## 行，段落换行，去其余标签
+    let text = xml
+      .replace(/<article-title>([\s\S]*?)<\/article-title>/gi, '\n## 标题：$1\n')
+      .replace(/<abstract[^>]*>/gi, '\n## 摘要\n')
+      .replace(/<section[^>]*>/gi, '\n')
+      .replace(/<title>([\s\S]*?)<\/title>/gi, '\n## $1\n')
+      .replace(/<p[^>]*>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#x27;/g, "'").replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s*\n\s*\n+/g, '\n\n')
+      .trim();
+    // 去掉开头的期刊元数据噪音：从"## 标题："或"## 摘要"开始截取
+    const bodyStart = text.search(/## 标题：|## 摘要/);
+    if(bodyStart > 0) text = text.slice(bodyStart).trim();
+    return text;
+  }catch(e){
+    return '';
+  }
+}
+
+// 参考资料提示条渲染
+function renderRefBar(){
+  const bar = document.getElementById('refBar');
+  if(!bar) return;
+  const inner = bar.firstElementChild;
+  const rm = state.refMaterial;
+  if(rm && rm.text && inner){
+    bar.style.display = '';
+    const len = rm.text.length;
+    inner.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+      <span style="flex:1">已附带${esc(rm.label||'论文全文')}（约 ${len>1000 ? Math.round(len/1000)+'k' : len} 字符）${rm.fullText? ' · 含全文' : ' · 仅摘要（未开放全文）'}</span>
+      <button class="btn btn-sm" onclick="clearRefMaterial()">移除</button>`;
+  } else {
+    bar.style.display = 'none';
+    if(inner) inner.innerHTML = '';
+  }
+}
+function clearRefMaterial(){
+  state.refMaterial = null;
+  save();
+  renderRefBar();
+  showToast('已移除参考资料');
+}
+
+async function createArticleFromPaper(index){
   const p = lastPapers[index];
   if(!p){ showToast('论文数据缺失'); return; }
-  // 带着论文标题 + 摘要跳转到 AI 工坊公众号图文
-  const title = p.title.slice(0,120);
-  const context = (p.summary ? '【论文中文要点摘要】\n' + p.summary + '\n\n' : '') +
-    `【论文原文信息】\n标题：${p.title}\n期刊：${p.journal} · ${p.date}\nDOI：${p.doi}\nPMID：${p.pmid}` +
-    (p.abstract && !p.summary ? '\n\n【英文摘要】\n' + p.abstract : '');
+  showToast('正在获取论文全文（约 3-10 秒）…');
+  // 抓取开放获取全文
+  const fullText = await fetchPaperFullText(p.pmid);
+  const meta = `【论文信息】\n标题：${p.title}\n期刊：${p.journal} · ${p.date}\nDOI：${p.doi}\nPMID：${p.pmid}`;
+  let refText = '';
+  if(fullText){
+    refText = meta + '\n\n【论文全文】\n' + fullText.slice(0, 30000);
+  } else {
+    // 没有开放全文 → 用摘要 + 已生成的中文摘要（如果有）
+    refText = meta + '\n\n【英文摘要】\n' + (p.abstract || '(无摘要)') +
+      (p.summary ? '\n\n【已生成的中文要点摘要】\n' + p.summary : '');
+  }
+  // 存为参考资料（不再塞进补充要求，避免 4000 字符截断丢失全文）
+  state.refMaterial = {
+    label: '论文：' + p.title.slice(0, 60),
+    fullText: !!fullText,
+    text: refText
+  };
+  save();
   switchTab('ai');
   setGenType('article');
-  $('#aiTopic').value = title;
+  $('#aiTopic').value = p.title.slice(0,120);
   $('#aiCat').value = '前沿文献';
   $('#aiPlat').value = '公众号';
-  $('#aiExtra').value = context.slice(0, 4000);
+  $('#aiExtra').value = ''; // 清空补充要求，避免上次残留干扰
   updateAIPanel();
-  showToast('已带入论文信息，请点「生成内容」创作图文');
+  renderRefBar();
+  showToast(fullText ? '已带入论文全文，AI 将通读全文后创作 ✓' : '该论文未开放全文，已带入摘要创作');
 }
 
 /* ================= 选题看板 ================= */
@@ -1345,19 +1424,30 @@ function buildPrompt(){
       outlineBlock = '【用户已确认的文章提纲】写作时必须严格遵循以下提纲：标题使用提纲中的标题（可微调措辞）；章节的数量、顺序、每节小标题与覆盖要点必须与提纲一致，不得自行增删章节或改变顺序；提纲中标注的数据/金句方向要在对应章节体现。提纲如下：\n' + ol;
     }
   }
+  // 参考资料模式：附带论文全文/摘要时，启用"文献全文深度改写"专用指令
+  const refMat = (curGenType==='article' && state.refMaterial && state.refMaterial.text) ? state.refMaterial : null;
+  let refBlock = '';
+  if(refMat){
+    refBlock = (refMat.fullText
+      ? '【参考资料：论文全文】下面附有这篇论文的全文。你必须先通读并通透理解全文（研究背景→方法→结果→结论），然后基于全文进行深度改写创作，而不是只改写摘要或梗概。'
+      : '【参考资料：论文摘要】下面附有这篇论文的摘要。请基于摘要进行深度改写创作。')
+      + '\n写作要求：\n1) 用通俗易懂的语言写给普通大众（无医学背景），专业术语必须用生活化比喻解释；\n2) 必须包含对普通人和病人的意义解读：这项研究对普通人意味着什么、对病人（患者及家属）带来了哪些新的治疗可能性（哪些患者可能获益、新药/新疗法相比现有治疗强在哪、离真正能用还有多远、当前局限性）；\n3) 所有数据、结论必须严格来自参考资料原文，不得编造；疗效表述不得夸大。\n参考资料如下：\n' + refMat.text + '\n（参考资料结束）';
+  }
 
   const articleStrictRule = '【硬性输出格式】你只能输出一个合法的 JSON 对象，并且必须放在一个 ```json 代码块里。禁止输出任何 JSON 之外的文字、解释、前言、问候、结语或 Markdown 标题。即使你不确定，也必须输出完整的 JSON 字段（可为空字符串），绝不能输出"好的""以下是"之类的引导语。';
 
   const sysByType = {
     title: '你是资深生物医药内容创作者，擅长起爆款标题。' + compliance,
     script: '你是生物医药短视频编导。脚本要求：黄金3秒钩子开头、口语化、用通俗比喻讲清专业概念、全片45-60秒约180字口播、结尾引导关注。' + compliance,
-    article: '你是生物医药深度科普作者兼专业公众号编辑。要求：输出严格 JSON 用于工作台可视化排版渲染；内容通俗易懂、结构清晰、数据有出处。' + (strictArticle?articleStrictRule:'') + compliance,
+    article: '你是生物医药深度科普作者兼专业公众号编辑。要求：输出严格 JSON 用于工作台可视化排版渲染；内容通俗易懂、结构清晰、数据有出处。'
+      + (refMat ? '当前任务：文献深度改写——把附带的论文全文通透读懂后，改写成面向普通大众（无医学背景）的通俗科普文章，而不是改写摘要或梗概；必须写清楚这项研究对普通人和病人的意义，以及带来的新治疗可能性。' : '')
+      + (strictArticle?articleStrictRule:'') + compliance,
     plain: '你是生物医药科普翻译官，把专业内容转成普通人能听懂的通俗科普。保留关键信息，善用类比，术语附通俗解释。' + compliance
   };
   const usrByType = {
     title: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请生成 10 个爆款标题候选，每行一个，风格多样（疑问式、数字式、悬念式、痛点式、反差式）。${extra?'\n补充要求：'+extra:''}`,
     script: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请输出：1) 标题\n2) 黄金3秒钩子\n3) 正文口播脚本（分镜头）\n4) 结尾 CTA\n5) 封面文案建议。${extra?'\n补充要求：'+extra:''}`,
-    article: `${strictArticle?'⚠️ 只输出一个 ```json 代码块，其中是合法 JSON 对象，不要任何其他文字。\n':''}主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n${outlineBlock}${outlineBlock?'\n':''}【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内（无文字插画）"\n    }\n  ]（${outlineBlock?'章节数量必须与提纲一致':'3-5个 sections'}）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
+    article: `${strictArticle?'⚠️ 只输出一个 ```json 代码块，其中是合法 JSON 对象，不要任何其他文字。\n':''}主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n${outlineBlock}${outlineBlock?'\n':''}${refBlock}${refBlock?'\n\n':''}【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内（无文字插画）"\n    }\n  ]（${outlineBlock?'章节数量必须与提纲一致':'3-5个 sections'}）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
     plain: `请把以下内容改写成通俗科普（普通人都能看懂）：\n${topic}\n${extra?'\n补充要求：'+extra:''}`
   };
 
@@ -1438,8 +1528,8 @@ async function generate(){
   $('#aiCopyBtn').style.display='none'; $('#aiSaveBtn').style.display='none'; $('#aiPackBtn').style.display='none';
 
   const {messages} = buildPrompt();
-  // article 模式启用强制 JSON 输出（response_format: json_object）
-  const callOpts = curGenType==='article' ? {useJsonFormat: true} : {};
+  // article 模式启用强制 JSON 输出（response_format: json_object）+ 更大 token 预算（全文改写/长文需要）
+  const callOpts = curGenType==='article' ? {useJsonFormat: true, maxTokens: 6000} : {};
   try{
     const text = await callLLM(messages, callOpts);
     if(!text){
@@ -2658,6 +2748,7 @@ function init(){
     if(olTa && state.outlineText) olTa.value = state.outlineText;
     olTa.addEventListener('blur', ()=>{ state.outlineText = olTa.value; save(); });
   }
+  renderRefBar();
   renderAll();
   // 云同步：已启用则拉取云端数据，否则显示本地存储
   if(state.sync && state.sync.enabled && state.sync.token){ syncPull(); }
