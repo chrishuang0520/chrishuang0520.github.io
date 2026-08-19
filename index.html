@@ -569,6 +569,9 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
     <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:6px" onclick="testImageKey()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>检测图像 Key 是否有效
     </button>
+    <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:6px" onclick="resetImageCfg()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9M12 3v3M3 12l3-3M3 12l3 3M21 12a9 9 0 0 1-9 9"/></svg>重置图像配置（按当前提供商刷新接口地址）
+    </button>
     <div style="border-top:1px solid var(--border);margin:16px 0 2px;padding-top:14px;font-size:13px;font-weight:700;color:var(--primary)">云同步（GitHub · 跨设备）</div>
     <div class="field" style="margin-top:10px">
       <label>GitHub Token (PAT)</label>
@@ -769,6 +772,8 @@ function load(){
   }
   state.aiConfig = c;
   state.sync = Object.assign({enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'}, state.sync||{});
+  // 让 load 做的迁移持久化到 localStorage（否则下次刷新又读到老的 state）
+  try{ localStorage.setItem(LS, JSON.stringify(state)); }catch(e){}
 }
 let formProvider = null;
 function getAccount(key){
@@ -1884,6 +1889,22 @@ async function testImageKey(){
     if(/Failed to fetch|fetch|NetworkError/i.test(msg)) msg = '网络失败，检查图像接口地址';
     showToast('❌ '+msg);
   }
+}
+// 一键按当前提供商刷新接口地址和模型（兜底修复 baseUrl 残留）
+function resetImageCfg(){
+  const prov = IMAGE_PROVIDERS.find(p=>p.key===$('#cfgImgProvider').value) || IMAGE_PROVIDERS[0];
+  $('#cfgImgBase').value = prov.baseUrl || '';
+  $('#cfgImgModel').value = prov.model || '';
+  // 立即写入 state 并保存
+  if(!state.aiConfig.image){
+    state.aiConfig.image = {provider:prov.key,apiKey:'',baseUrl:prov.baseUrl,model:prov.model};
+  } else {
+    state.aiConfig.image.baseUrl = prov.baseUrl || '';
+    state.aiConfig.image.model = prov.model || '';
+    state.aiConfig.image.provider = prov.key;
+  }
+  save();
+  showToast('✅ 已重置为 '+prov.name+' 默认接口地址');
 }
 function onCfgModelChange(){
   const v = $('#cfgModel').value;
