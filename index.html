@@ -625,17 +625,42 @@ const WEEK=['日','一','二','三','四','五','六'];
 function wkStr(s){ return '周'+WEEK[parseDate(s).getDay()] }
 
 /* ================= 数据层 ================= */
-let state = { ideas:[], schedules:[], metrics:[], aiConfig:{provider:'deepseek',apiKey:'',baseUrl:'https://api.deepseek.com',model:'deepseek-chat',videoKey:'',videoBaseUrl:'https://api.minimax.io',videoModel:'MiniMax-H3'}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'} };
+let state = { ideas:[], schedules:[], metrics:[], aiConfig:{provider:'deepseek',accounts:{},videoKey:'',videoBaseUrl:'https://api.minimax.io',videoModel:'MiniMax-H3'}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'} };
 
 function load(){
   try{
     const raw = localStorage.getItem(LS);
-    if(raw){ const d = JSON.parse(raw); state = Object.assign({aiConfig:{provider:'deepseek',apiKey:'',baseUrl:'https://api.deepseek.com',model:'deepseek-chat',videoKey:'',videoBaseUrl:'https://api.minimax.io',videoModel:'MiniMax-H3'}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'}}, d); }
+    if(raw){ const d = JSON.parse(raw); state = Object.assign({aiConfig:{provider:'deepseek',accounts:{},videoKey:'',videoBaseUrl:'https://api.minimax.io',videoModel:'MiniMax-H3'}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'}}, d); }
   }catch(e){ console.warn('load fail', e) }
-  const defCfg = {provider:'deepseek',apiKey:'',baseUrl:'https://api.deepseek.com',model:'deepseek-chat',videoKey:'',videoBaseUrl:'https://api.minimax.io',videoModel:'MiniMax-H3'};
-  state.aiConfig = Object.assign(defCfg, state.aiConfig||{});
+  const c = state.aiConfig || {};
+  if(!c.accounts) c.accounts = {};
+  // 迁移旧版数据（旧版是顶层 apiKey/baseUrl/model，迁移到 accounts[provider]）
+  if(c.apiKey !== undefined){
+    const pk = c.provider || 'deepseek';
+    c.accounts[pk] = c.accounts[pk] || {};
+    if(!c.accounts[pk].apiKey) c.accounts[pk].apiKey = c.apiKey;
+    if(c.baseUrl && !c.accounts[pk].baseUrl) c.accounts[pk].baseUrl = c.baseUrl;
+    if(c.model && !c.accounts[pk].model) c.accounts[pk].model = c.model;
+    delete c.apiKey; delete c.baseUrl; delete c.model;
+  }
+  PROVIDERS.forEach(p=>{ if(!c.accounts[p.key]) c.accounts[p.key] = {}; });
+  if(!c.videoBaseUrl) c.videoBaseUrl = 'https://api.minimax.io';
+  if(!c.videoModel) c.videoModel = 'MiniMax-H3';
+  state.aiConfig = c;
   state.sync = Object.assign({enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'}, state.sync||{});
 }
+let formProvider = null;
+function getAccount(key){
+  const a = (state.aiConfig.accounts && state.aiConfig.accounts[key]) || {};
+  const p = PROVIDERS.find(x=>x.key===key) || PROVIDERS[0];
+  return { apiKey: a.apiKey||'', baseUrl: a.baseUrl||p.baseUrl||'', model: a.model||p.model||'' };
+}
+function setAccount(key, data){
+  if(!state.aiConfig.accounts) state.aiConfig.accounts = {};
+  if(!state.aiConfig.accounts[key]) state.aiConfig.accounts[key] = {};
+  Object.assign(state.aiConfig.accounts[key], data);
+}
+function curAccount(){ return getAccount(state.aiConfig.provider); }
 function save(){
   try{ localStorage.setItem(LS, JSON.stringify(state)); }catch(e){ showToast('保存失败：存储空间不足'); }
   if(state.sync && state.sync.enabled && state.sync.token){ scheduleSyncPush(); }
@@ -957,19 +982,19 @@ function buildPrompt(){
 }
 async function generate(){
   if(curGenType==='videogen'){ return generateVideo(); }
-  const cfg = state.aiConfig;
-  if(!cfg.apiKey){ showToast('请先在 AI 设置里填写 API Key'); openSettings(); return; }
+  const prov = PROVIDERS.find(p=>p.key===state.aiConfig.provider) || PROVIDERS[0];
+  const acct = curAccount();
+  if(!acct.apiKey){ showToast('请先在 AI 设置里填写 '+prov.name+' 的 API Key'); openSettings(); return; }
   const topic = $('#aiTopic').value.trim();
   if(!topic){ showToast('请先输入主题/关键词'); $('#aiTopic').focus(); return; }
 
-  const prov = PROVIDERS.find(p=>p.key===cfg.provider) || PROVIDERS[0];
   const btn = $('#aiGenBtn');
   btn.disabled = true;
   $('#aiOutBody').innerHTML = '<div class="ai-loading"><span class="spinner"></span>正在调用 '+prov.name+' 生成，请稍候…</div>';
   $('#aiCopyBtn').style.display='none'; $('#aiSaveBtn').style.display='none'; $('#aiPackBtn').style.display='none';
 
   const {messages} = buildPrompt();
-  const base = (cfg.baseUrl||prov.baseUrl).replace(/\/+$/,'');
+  const base = (acct.baseUrl||prov.baseUrl).replace(/\/+$/,'');
   try{
     let text = '';
     if(prov.api==='anthropic'){
@@ -977,8 +1002,8 @@ async function generate(){
       const userMsgs = messages.filter(m=>m.role!=='system').map(m=>({role:m.role, content:m.content}));
       const res = await fetch(base + '/v1/messages', {
         method:'POST',
-        headers:{ 'Content-Type':'application/json', 'x-api-key':cfg.apiKey, 'anthropic-version':'2023-06-01' },
-        body: JSON.stringify({ model: cfg.model||prov.model, system: systemMsg, messages: userMsgs, max_tokens: 2600 })
+        headers:{ 'Content-Type':'application/json', 'x-api-key':acct.apiKey, 'anthropic-version':'2023-06-01' },
+        body: JSON.stringify({ model: acct.model||prov.model, system: systemMsg, messages: userMsgs, max_tokens: 2600 })
       });
       const data = await res.json().catch(()=>({}));
       if(!res.ok || !data.content){ throw new Error(data.error?.message || ('请求失败 HTTP '+res.status)); }
@@ -986,8 +1011,8 @@ async function generate(){
     }else{
       const res = await fetch(base + '/chat/completions', {
         method:'POST',
-        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+cfg.apiKey },
-        body: JSON.stringify({ model: cfg.model||prov.model, messages, temperature:0.85, max_tokens: 2600, stream:false })
+        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+acct.apiKey },
+        body: JSON.stringify({ model: acct.model||prov.model, messages, temperature:0.85, max_tokens: 2600, stream:false })
       });
       const data = await res.json().catch(()=>({}));
       if(!res.ok || !data.choices || !data.choices[0]){ throw new Error(data.error?.message || ('请求失败 HTTP '+res.status)); }
@@ -1183,18 +1208,32 @@ function saveAIAsIdea(){
 /* AI 设置 */
 function openSettings(){
   const c = state.aiConfig;
+  formProvider = c.provider;
   $('#cfgProvider').innerHTML = PROVIDERS.map(p=>`<option value="${p.key}" ${p.key===c.provider?'selected':''}>${p.name}</option>`).join('');
-  $('#cfgKey').value = c.apiKey||''; $('#cfgBase').value = c.baseUrl||'';
-  fillCfgModelSelect(c.model);
+  const acct = curAccount();
+  $('#cfgKey').value = acct.apiKey; $('#cfgBase').value = acct.baseUrl;
+  fillCfgModelSelect(acct.model);
   $('#cfgVideoKey').value = c.videoKey||''; $('#cfgVideoBase').value = c.videoBaseUrl||''; $('#cfgVideoModel').value = c.videoModel||'';
   $('#cfgSyncToken').value = state.sync.token||''; $('#cfgSyncOwner').value = state.sync.owner||''; $('#cfgSyncRepo').value = state.sync.repo||''; $('#cfgSyncEnabled').checked = !!state.sync.enabled;
+  $('#testKeyResult').innerHTML = '';
   $('#settingsOv').classList.add('show');
 }
 function onProviderChange(){
-  const p = PROVIDERS.find(x=>x.key===$('#cfgProvider').value);
-  if(!p) return;
-  $('#cfgBase').value = p.baseUrl||'';
-  fillCfgModelSelect(p.model);
+  const newKey = $('#cfgProvider').value;
+  const newP = PROVIDERS.find(x=>x.key===newKey);
+  if(!newP) return;
+  // 先把当前表单内容存回上一个 provider，避免切换时丢失
+  if(formProvider && formProvider !== newKey){
+    let m = $('#cfgModel').value;
+    if(m==='__custom__') m = $('#cfgModelCustom').value;
+    setAccount(formProvider, { apiKey: $('#cfgKey').value.trim(), baseUrl: $('#cfgBase').value.trim(), model: m.trim() });
+  }
+  formProvider = newKey;
+  const acct = getAccount(newKey);
+  $('#cfgBase').value = acct.baseUrl || newP.baseUrl;
+  $('#cfgKey').value = acct.apiKey;
+  fillCfgModelSelect(acct.model || newP.model);
+  $('#testKeyResult').innerHTML = '';
 }
 function fillCfgModelSelect(currentModel){
   const p = PROVIDERS.find(x=>x.key===$('#cfgProvider').value) || PROVIDERS[0];
@@ -1254,18 +1293,19 @@ function testKey(){
   })();
 }
 function saveSettings(){
-  const p = PROVIDERS.find(x=>x.key===$('#cfgProvider').value) || PROVIDERS[0];
+  const key = $('#cfgProvider').value;
+  const p = PROVIDERS.find(x=>x.key===key) || PROVIDERS[0];
   let m = $('#cfgModel').value;
   if(m==='__custom__') m = $('#cfgModelCustom').value;
-  state.aiConfig = {
-    provider: p.key,
+  setAccount(key, {
     apiKey: $('#cfgKey').value.trim(),
     baseUrl: ($('#cfgBase').value.trim()||p.baseUrl),
-    model: (m.trim()||p.model),
-    videoKey: $('#cfgVideoKey').value.trim(),
-    videoBaseUrl: ($('#cfgVideoBase').value.trim()||'https://api.minimax.io'),
-    videoModel: ($('#cfgVideoModel').value.trim()||'MiniMax-H3')
-  };
+    model: (m.trim()||p.model)
+  });
+  state.aiConfig.provider = key;
+  state.aiConfig.videoKey = $('#cfgVideoKey').value.trim();
+  state.aiConfig.videoBaseUrl = ($('#cfgVideoBase').value.trim()||'https://api.minimax.io');
+  state.aiConfig.videoModel = ($('#cfgVideoModel').value.trim()||'MiniMax-H3');
   state.sync = {
     enabled: $('#cfgSyncEnabled').checked,
     token: $('#cfgSyncToken').value.trim(),
@@ -1294,10 +1334,11 @@ function updateAIBadge(){
     return;
   }
   const p = PROVIDERS.find(x=>x.key===c.provider) || PROVIDERS[0];
-  el.appendChild(span(p.name+' · '+(c.model||p.model)));
+  const acct = curAccount();
+  el.appendChild(span(p.name+' · '+(acct.model||p.model)));
   el.appendChild(span('　·　'));
-  const ks = span(c.apiKey ? 'Key 已配置（····'+c.apiKey.slice(-4)+'）' : '⚠ 未配置 Key，点右上角齿轮');
-  ks.style.color = c.apiKey ? 'var(--success)' : 'var(--danger)';
+  const ks = span(acct.apiKey ? 'Key 已配置（····'+acct.apiKey.slice(-4)+'）' : '⚠ 未配置 Key，点右上角齿轮');
+  ks.style.color = acct.apiKey ? 'var(--success)' : 'var(--danger)';
   el.appendChild(ks);
 }
 
@@ -1512,7 +1553,20 @@ function importJSON(input){
       const d = JSON.parse(e.target.result);
       if(!d.ideas || !d.schedules || !d.metrics){ throw new Error('格式不正确'); }
       state.ideas = d.ideas; state.schedules = d.schedules; state.metrics = d.metrics;
-      if(d.aiConfig) state.aiConfig = d.aiConfig;
+      if(d.aiConfig){
+        state.aiConfig = d.aiConfig;
+        const c = state.aiConfig;
+        if(!c.accounts) c.accounts = {};
+        if(c.apiKey !== undefined){
+          const pk = c.provider || 'deepseek';
+          c.accounts[pk] = c.accounts[pk] || {};
+          if(!c.accounts[pk].apiKey) c.accounts[pk].apiKey = c.apiKey;
+          if(c.baseUrl && !c.accounts[pk].baseUrl) c.accounts[pk].baseUrl = c.baseUrl;
+          if(c.model && !c.accounts[pk].model) c.accounts[pk].model = c.model;
+          delete c.apiKey; delete c.baseUrl; delete c.model;
+        }
+        PROVIDERS.forEach(p=>{ if(!c.accounts[p.key]) c.accounts[p.key] = {}; });
+      }
       save(); renderAll(); updateAIBadge(); showToast('导入成功，共 '+state.ideas.length+' 条选题');
     }catch(err){ showToast('导入失败：文件格式不正确'); }
   };
