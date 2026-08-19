@@ -399,6 +399,15 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
           <input class="input" id="aiTopic" placeholder="例如：ADC 抗体偶联药物怎么精准打击癌细胞">
         </div>
         <div id="videoParams" style="display:none">
+          <!-- 顶部流程提示条（始终可见，让用户清楚流程） -->
+          <div class="video-flow-tip" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 12px;margin-bottom:14px;background:linear-gradient(90deg,#F0FDFA,#F0F9FF);border:1px solid var(--primary-soft);border-radius:10px;font-size:12.5px;color:var(--primary-dark)">
+            <span style="font-weight:700">🎬 视频创作流程</span>
+            <span style="color:var(--muted)">① 写创意</span><span style="color:var(--muted)">→</span>
+            <span style="color:var(--muted)">② AI 完善</span><span style="color:var(--muted)">→</span>
+            <span style="color:var(--muted)">③ AI 出脚本</span><span style="color:var(--muted)">→</span>
+            <span style="color:var(--muted)">④ 配音+BGM</span><span style="color:var(--muted)">→</span>
+            <span style="color:var(--muted)">⑤ 生成视频</span>
+          </div>
           <!-- 步骤 1：创意输入 + AI 完善 -->
           <div class="field" style="border-left:3px solid var(--primary);padding-left:10px;margin-bottom:14px">
             <label style="display:flex;align-items:center;gap:6px">① 创意输入（简短想法）<span class="step-hint" style="font-size:11px;color:var(--muted);font-weight:normal">· AI 将帮你扩展成详细创意</span></label>
@@ -408,23 +417,23 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
               <span id="videoPolishStatus" style="font-size:12px;color:var(--muted);align-self:center"></span>
             </div>
           </div>
-          <div class="field" id="videoPolishedBox" style="display:none;border-left:3px solid var(--accent,#0D9488);padding-left:10px;margin-bottom:14px">
+          <div class="field" id="videoPolishedBox" style="border-left:3px solid var(--accent,#0D9488);padding-left:10px;margin-bottom:14px">
             <label>② 完善后的创意（可继续编辑）</label>
-            <textarea class="input" id="videoPolished" rows="4"></textarea>
+            <textarea class="input" id="videoPolished" rows="4" placeholder="（点击上方「AI 完善创意」后，这里会自动填入详细画面描述）"></textarea>
             <div style="display:flex;gap:6px;margin-top:6px">
               <button class="btn btn-sm btn-primary" id="videoScriptBtn" onclick="generateVideoScript()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>AI 生成视频脚本（分镜+旁白）</button>
               <span style="font-size:12px;color:var(--muted);align-self:center">脚本会作为视频生成参考</span>
             </div>
           </div>
-          <div class="field" id="videoScriptBox" style="display:none;border-left:3px solid #8B5CF6;padding-left:10px;margin-bottom:14px">
+          <div class="field" id="videoScriptBox" style="border-left:3px solid #8B5CF6;padding-left:10px;margin-bottom:14px">
             <label>③ 视频脚本（每镜画面+旁白，可编辑）</label>
-            <div id="videoScriptList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;max-height:280px;overflow:auto"></div>
+            <div id="videoScriptList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;max-height:280px;overflow:auto"><div class="vs-empty" style="color:var(--muted);font-size:12px;padding:8px 4px">（点击「AI 生成视频脚本」后，分镜会显示在这里）</div></div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn btn-sm" onclick="regenVideoScript()">🔁 重新生成</button>
               <button class="btn btn-sm" onclick="copyVideoScript()">📋 复制全部</button>
             </div>
           </div>
-          <div class="field" id="videoAudioBox" style="display:none;border-left:3px solid #F59E0B;padding-left:10px;margin-bottom:14px">
+          <div class="field" id="videoAudioBox" style="border-left:3px solid #F59E0B;padding-left:10px;margin-bottom:14px">
             <label>④ 配音与背景音乐</label>
             <div class="form-row">
               <div class="field">
@@ -1726,9 +1735,7 @@ async function polishVideoIdea(){
     if(!text) throw new Error('返回内容为空');
     const cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
     $('#videoPolished').value = cleaned || text.trim();
-    $('#videoPolishedBox').style.display = '';
-    $('#videoScriptBox').style.display = 'none';
-    $('#videoAudioBox').style.display = 'none';
+    $('#videoPolishedBox').scrollIntoView({behavior:'smooth', block:'center'});
     $('#videoPolishStatus').textContent = '✓ 完善完成，可继续编辑后生成脚本';
     showToast('创意已完善 ✓');
   }catch(e){
@@ -1782,6 +1789,7 @@ async function generateVideoScript(){
     $('#videoScriptBox').style.display = '';
     $('#videoAudioBox').style.display = '';
     showToast('脚本已生成 ✓');
+    $('#videoScriptBox').scrollIntoView({behavior:'smooth', block:'center'});
   }catch(e){
     let msg = e.message || '生成失败';
     if(/NO_KEY/.test(msg)){ showToast('请先填写 API Key'); openSettings(); return; }
