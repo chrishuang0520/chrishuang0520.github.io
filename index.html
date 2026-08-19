@@ -1104,26 +1104,41 @@ function packPublishText(){
   showToast('发布文案已打包复制，去 '+plat+' 粘贴即可');
 }
 function saveAIAsIdea(){
-  if(!lastAIResult){ showToast('暂无内容'); return; }
-  const topic = $('#aiTopic').value.trim() || 'AI 生成内容';
-  const cat = $('#aiCat').value;
-  const isVideo = curGenType==='videogen';
-  let title, note;
-  if(isVideo){
-    title = topic.slice(0,40);
-    note = '视频素材：'+lastAIResult;
-  }else{
-    const firstLine = lastAIResult.split('\n').map(s=>s.trim()).find(s=>s && !/^#{1,4}\s/.test(s)) || topic;
-    title = firstLine.slice(0,40);
-    note = 'AI 生成：'+topic;
+  try{
+    // 后备机制：如果 lastAIResult 内存变量丢失（页面刷新/重新加载后），
+    // 从 aiOutBody DOM 反读纯文本，保证按钮任何时候都能工作
+    let text = lastAIResult;
+    if(!text){
+      const body = $('#aiOutBody');
+      text = body ? (body.innerText || body.textContent || '') : '';
+      text = text.trim();
+      // 过滤掉初始占位文字
+      if(text.indexOf('即可调用 AI 大模型')>-1) text = '';
+    }
+    if(!text){ showToast('暂无内容，请先点「生成内容」'); return; }
+    const topic = $('#aiTopic').value.trim() || 'AI 生成内容';
+    const cat = $('#aiCat').value;
+    const isVideo = curGenType==='videogen';
+    let title, note;
+    if(isVideo){
+      title = topic.slice(0,40);
+      note = '视频素材：'+(text.length>200 ? text.slice(0,200)+'...' : text);
+    }else{
+      const firstLine = text.split('\n').map(s=>s.trim()).find(s=>s && !/^#{1,4}\s/.test(s)) || topic;
+      title = firstLine.slice(0,40);
+      note = 'AI 生成：'+topic;
+    }
+    state.ideas.push({
+      id:uid(), title: title, category:cat, platforms:[$('#aiPlat').value],
+      priority:'P1', status:'inspiration', dueDate:'', note: note, createdAt:todayStr(), updatedAt:todayStr()
+    });
+    save(); renderAll();
+    switchTab('ideas');
+    showToast('已存入选题「灵感」列（最下方）');
+  }catch(e){
+    console.error('saveAIAsIdea:', e);
+    showToast('保存失败：'+(e.message||e));
   }
-  state.ideas.push({
-    id:uid(), title: title, category:cat, platforms:[$('#aiPlat').value],
-    priority:'P1', status:'inspiration', dueDate:'', note: note, createdAt:todayStr(), updatedAt:todayStr()
-  });
-  save(); renderAll();
-  switchTab('ideas');
-  showToast('已存入选题「灵感」列（最下方）');
 }
 
 /* AI 设置 */
