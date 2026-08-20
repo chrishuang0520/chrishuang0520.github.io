@@ -1474,6 +1474,35 @@ async function fetchPubMedHot(){
     }).filter(x=>x.title);
   }catch(e){ return []; }
 }
+// 配额选取：严格 3研发 + 3临床 + 3证券 + 1其他 = 10 个
+// existing：已有条目（AI 精选结果，优先保留）；pool：原始条目池（补缺用）
+function pickByQuota(pool, existing){
+  const QUOTA = {'研发':3, '临床':3, '证券':3, '其他':1};
+  const byCat = {'研发':[], '临床':[], '证券':[], '其他':[]};
+  (existing||[]).forEach(x=>{ (byCat[x.category]||byCat['其他']).push(x); });
+  const used = new Set((existing||[]).map(x=>x.link));
+  const poolByCat = {'研发':[], '临床':[], '证券':[], '其他':[]};
+  (pool||[]).forEach(x=>{ if(!used.has(x.link)) (poolByCat[x.category]||poolByCat['其他']).push(x); });
+  const out = [];
+  for(const c in QUOTA){
+    out.push(...byCat[c].slice(0, QUOTA[c]));           // 保留（裁掉超配额的）
+    const need = QUOTA[c] - Math.min(byCat[c].length, QUOTA[c]);
+    for(let i=0; i<need && poolByCat[c].length; i++){   // 缺口从同类原始池补
+      out.push(Object.assign(poolByCat[c].shift(), {summary: ''}));
+    }
+  }
+  // 某类原始池枯竭导致不足 10 → 从最大的富余池补齐（保持总数 10）
+  let guard = 0;
+  while(out.length < 10 && guard < 60){
+    guard++;
+    let best = null;
+    for(const c in poolByCat){ if(poolByCat[c].length && (!best || poolByCat[c].length > poolByCat[best].length)) best = c; }
+    if(!best) break;
+    out.push(Object.assign(poolByCat[best].shift(), {summary: ''}));
+  }
+  return out;
+}
+
 // 主流程：抓取本周热点（force=true 手动刷新）
 async function fetchHotTopics(force){
   const WEEK_MS = 7*24*60*60*1000;
@@ -1507,7 +1536,7 @@ async function fetchHotTopics(force){
       try{
         const feed = raw.slice(0, 45).map((x,i)=>`[${i}] (${x.category}) ${x.title} | ${x.source}`).join('\n');
         const sys = '你是生物医药行业分析师兼内容策划，擅长从新闻流中挑选最有科普创作价值的话题。只输出 JSON。';
-        const user = `下面是本周从 Google News 和 PubMed 抓到的医药热点条目（带分类标签）：\n${feed}\n\n请精选出 10 个最有内容创作价值的话题，要求：\n1) 必须均衡覆盖：研发（新药/技术平台）至少3个、临床（试验数据/审批）至少3个、证券市场（股价/融资/并购）至少2个，其余可为政策/行业事件\n2) 每个话题输出 JSON：{"idx": 原条目序号, "title": "20字内中文标题", "summary": "60-90字梗概（这件事是什么+为什么值得写+对大众/患者的看点）", "category": "研发|临床|证券|其他"}\n3) 优先选：中国相关、肿瘤领域、数据明确、大众关心的话题\n4) 只输出一个 JSON 数组（10个对象），禁止其他文字`;
+        const user = `下面是本周从 Google News 和 PubMed 抓到的医药热点条目（带分类标签）：\n${feed}\n\n请精选出 10 个最有内容创作价值的话题。【数量硬性要求】恰好：3 个研发 + 3 个临床 + 3 个证券 + 1 个其他，共 10 个不多不少：\n- 研发（新药/技术平台/管线交易）恰好 3 个\n- 临床（试验数据/审批/监管）恰好 3 个\n- 证券（股价/融资/并购/IPO）恰好 3 个\n- 其他（政策/人物/行业事件）恰好 1 个\n每个话题输出 JSON：{"idx": 原条目序号, "title": "20字内中文标题", "summary": "60-90字梗概（这件事是什么+为什么值得写+对大众/患者的看点）", "category": "研发|临床|证券|其他"}\n优先选：中国相关、肿瘤领域、数据明确、大众关心的话题\n只输出一个 JSON 数组（恰好10个对象），禁止其他文字`;
         const text = await callLLM([{role:'system',content:sys},{role:'user',content:user}], {maxTokens: 3000, temperature: 0.6, useJsonFormat: true});
         const picked = parseScriptJSON(text);
         if(Array.isArray(picked) && picked.length){
@@ -1523,22 +1552,15 @@ async function fetchHotTopics(force){
               pubDate: srcItem.pubDate || ''
             });
           });
+          // 配额校正：即使 AI 没严格遵循 3+3+3+1，也强制调整（多裁少补）
+          items = pickByQuota(raw, items);
         }
       }catch(e){ /* AI 精选失败 → 降级 */ }
     }
-    // 降级：无 Key 或 AI 失败 → 按分类轮转取 10 个
+    // 降级：无 Key 或 AI 失败 → 按配额 3研发+3临床+3证券+1其他 从原始池选取（按时间新→旧）
     if(!items.length){
-      const byCat = {研发:[], 临床:[], 证券:[], 其他:[]};
-      raw.forEach(x=>{ (byCat[x.category]||byCat['其他']).push(x); });
-      const order = ['研发','临床','证券','其他'];
-      order.forEach(c=>byCat[c].sort((a,b)=>(b.pubDate||'').localeCompare(a.pubDate||'')));
-      let i = 0;
-      while(items.length < 10 && order.some(c=>byCat[c].length)){
-        const c = order[i % 4];
-        if(byCat[c].length) items.push(Object.assign(byCat[c].shift(), {summary:''}));
-        i++;
-        if(i > 40) break;
-      }
+      const rawSorted = [...raw].sort((a,b)=>(b.pubDate||'').localeCompare(a.pubDate||''));
+      items = pickByQuota(rawSorted, []);
     }
     state.hotTopics = { lastFetch: Date.now(), items };
     save();
