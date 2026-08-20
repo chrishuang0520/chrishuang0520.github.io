@@ -509,6 +509,7 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
               <option value="2K">2K（更清晰）</option>
             </select>
           </div>
+          <div id="videoFlowStatus" style="display:none;border:1px solid var(--warning);background:#FFF8E7;border-radius:10px;padding:10px 12px;margin-top:6px;font-size:13px;line-height:1.7"></div>
         </div>
         <div class="form-row" id="textOnlyFields">
           <div class="field">
@@ -1749,6 +1750,7 @@ async function polishVideoIdea(){
     $('#videoPolished').value = cleaned || text.trim();
     $('#videoPolishedBox').scrollIntoView({behavior:'smooth', block:'center'});
     $('#videoPolishStatus').textContent = '✓ 完善完成，可继续编辑后生成脚本';
+    renderVideoFlowStatus();
     showToast('创意已完善 ✓');
   }catch(e){
     let msg = e.message || '完善失败';
@@ -1813,6 +1815,7 @@ async function generateVideoScript(opts){
     $('#videoAudioBox').style.display = '';
     showToast('脚本已生成 ✓');
     $('#videoScriptBox').scrollIntoView({behavior:'smooth', block:'center'});
+    renderVideoFlowStatus();
   }catch(e){
     let msg = e.message || '生成失败';
     if(/NO_KEY/.test(msg)){ showToast('请先填写 API Key'); openSettings(); return; }
@@ -2237,8 +2240,33 @@ function audioBufferToWav(buffer){
   return arr;
 }
 
+// 在视频参数区渲染三步流程的进度（让用户随时看到缺哪步）
+function renderVideoFlowStatus(){
+  const box = document.getElementById('videoFlowStatus');
+  if(!box) return;
+  const hasIdea = !!(($('#videoIdea') && $('#videoIdea').value || '').trim());
+  const hasPolished = !!(($('#videoPolished') && $('#videoPolished').value || '').trim());
+  const hasScript = (typeof videoScriptData !== 'undefined' && videoScriptData && videoScriptData.length > 0);
+  const done = [hasIdea, hasPolished, hasScript].filter(Boolean).length;
+  if(done === 3){
+    box.style.display = 'none';
+    return;
+  }
+  const tip = `<div style="font-weight:700;color:var(--warning);margin-bottom:4px">⚠ 视频生成需要先完成前置步骤（已完成 ${done}/3）：</div>
+  <div style="color:var(--text);line-height:1.9">
+    <span style="display:inline-block;width:18px">${hasIdea?'✅':'⬜'}</span> ① 在「视频创意输入框」写一句想法<br>
+    <span style="display:inline-block;width:18px">${hasPolished?'✅':'⬜'}</span> ② 点「AI 完善创意」生成详细画面描述<br>
+    <span style="display:inline-block;width:18px">${hasScript?'✅':'⬜'}</span> ③ 点「AI 生成视频脚本」生成分镜
+  </div>
+  <div style="color:var(--muted);font-size:12px;margin-top:6px">快捷方式：直接在 ① 写完整描述后点「生成视频」也能跳过中间步骤。</div>`;
+  box.innerHTML = tip;
+  box.style.display = '';
+}
+
 async function generateVideo(){
   const cfg = state.aiConfig;
+  // 渲染流程进度提示（让用户随时看到缺哪步）
+  renderVideoFlowStatus();
   // 校验错误渲染到结果区（不只是 toast，用户能清楚看到原因）
   const showErr = (msg, extra) => {
     $('#aiOutBody').innerHTML = `<div class="empty" style="padding:30px 20px;max-width:680px;margin:0 auto">
@@ -2259,7 +2287,17 @@ async function generateVideo(){
   } else {
     prompt = ($('#videoPolished').value || $('#videoIdea').value || '').trim();
   }
-  if(!prompt){ showErr('请先填写视频创意', '按流程操作：① 在创意输入框写一句想法 → ② 点「AI 完善创意」→ ③ 点「AI 生成脚本」→ 再点「生成视频」。<br>也可以直接在 ① 写完整描述后点「生成视频」'); $('#videoIdea').focus(); return; }
+  // 在视频区显示流程进度（方便用户知道缺哪步）
+  renderVideoFlowStatus();
+  if(!prompt){
+    // 缺失时：除了 toast，还在视频区显示明显的提示
+    const hint = document.getElementById('videoFlowStatus');
+    if(hint){
+      hint.scrollIntoView({behavior:'smooth', block:'center'});
+      hint.style.display = '';
+    }
+    showErr('请先完成视频创作的前置步骤', '看视频区上方的"流程进度"提示，缺哪步就补哪步。也可直接在 ① 创意输入框写完整描述后点「生成视频」。'); $('#videoIdea').focus(); return;
+  }
   const ratio = $('#videoRatio').value;
   const duration = +$('#videoDuration').value;
   const resolution = $('#videoRes').value;
