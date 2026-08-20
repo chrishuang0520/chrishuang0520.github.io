@@ -455,7 +455,7 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
             <div class="form-row">
               <div class="field">
                 <label>背景音乐风格</label>
-                <select class="input" id="bgmStyle">
+                <select class="input" id="bgmStyle" onchange="updateBgmSourceLabel()">
                   <option value="none">无 BGM（仅配音）</option>
                   <option value="calm" selected>轻音乐钢琴（舒缓科普）</option>
                   <option value="tech">科技电子（前沿研究）</option>
@@ -476,7 +476,11 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
               <button class="btn btn-sm" onclick="previewBGM()">▶ 试听 BGM（30秒循环）</button>
               <button class="btn btn-sm" onclick="stopBGM()">⏹ 停止</button>
               <button class="btn btn-sm" onclick="downloadBGM()">⬇ 下载 BGM .wav</button>
+              <button class="btn btn-sm" onclick="document.getElementById('bgmFile').click()" title="上传本地 mp3/wav/m4a 等，音质更好">📁 本地音乐</button>
+              <button class="btn btn-sm" onclick="loadBgmFromUrl()" title="粘贴远程音频 URL（https 直链）">🔗 远程URL</button>
+              <input type="file" id="bgmFile" style="display:none" accept="audio/mp3,audio/wav,audio/m4a,audio/ogg,audio/aac,audio/x-m4a" onchange="onBgmFile(event)">
             </div>
+            <div id="bgmSourceLabel" style="margin-top:8px;font-size:12px;color:var(--muted)">当前音源：<span id="bgmSourceText">程序化合成（轻音乐钢琴）</span></div>
           </div>
           <div class="form-row">
             <div class="field">
@@ -2034,6 +2038,8 @@ function downloadNarrationText(){
 // ==== 背景音乐：分层编曲合成引擎（无版权，30 秒循环 WAV）====
 let bgmAudioCtx = null;
 let bgmSource = null;
+let bgmUserBuffer = null; // 用户上传/URL 加载的音频 buffer（优先级高于程序化合成）
+let bgmSourceLabel = '';   // 当前音源描述（显示在 UI 上）
 function ensureBgmCtx(){
   if(!bgmAudioCtx){
     bgmAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -2043,9 +2049,21 @@ function ensureBgmCtx(){
 }
 function previewBGM(){
   const style = $('#bgmStyle').value;
-  if(style==='none'){ showToast('当前是无 BGM'); return; }
+  if(style==='none' && !bgmUserBuffer){ showToast('当前是无 BGM'); return; }
   ensureBgmCtx();
   if(bgmSource){ try{ bgmSource.stop(); }catch(e){} bgmSource = null; }
+  if(bgmUserBuffer){
+    showToast('正在播放用户音源（30 秒循环）…');
+    const src = bgmAudioCtx.createBufferSource();
+    src.buffer = bgmUserBuffer; src.loop = true;
+    const gain = bgmAudioCtx.createGain();
+    gain.gain.value = parseFloat($('#bgmVol').value) || 0.3;
+    src.connect(gain).connect(bgmAudioCtx.destination);
+    src.start();
+    bgmSource = src;
+    showToast('用户音源循环播放中…');
+    return;
+  }
   showToast('BGM 合成中（约 1-3 秒）…');
   setTimeout(()=>{
     const sample = renderBGM(style, 30);
@@ -2059,12 +2077,84 @@ function previewBGM(){
     showToast('BGM 循环播放中…');
   }, 50);
 }
+// 上传本地音频（mp3/wav/m4a 等）
+async function onBgmFile(ev){
+  const f = ev.target.files && ev.target.files[0];
+  if(!f) return;
+  if(f.size > 30*1024*1024){ showToast('文件过大（>30MB），请选 <30MB 的 BGM'); return; }
+  showToast('正在解码 ' + f.name + '…');
+  try{
+    const buf = await f.arrayBuffer();
+    ensureBgmCtx();
+    const decoded = await new Promise((res, rej)=>bgmAudioCtx.decodeAudioData(buf, res, rej));
+    bgmUserBuffer = decoded;
+    bgmSourceLabel = f.name;
+    updateBgmSourceLabel();
+    if(bgmSource){ try{ bgmSource.stop(); }catch(e){} bgmSource = null; }
+    showToast('✓ 已加载本地音频 ' + f.name + '（约 ' + Math.round(decoded.duration) + ' 秒）');
+  }catch(e){
+    showToast('音频解码失败：' + (e.message||'格式不支持'));
+  }
+  ev.target.value = '';
+}
+// 加载远程 URL 音频
+async function loadBgmFromUrl(){
+  const url = prompt('粘贴音频直链 URL（https 开头的 mp3/wav/m4a 等）');
+  if(!url) return;
+  if(!/^https?:\/\//i.test(url)){ showToast('URL 必须以 http(s) 开头'); return; }
+  showToast('正在下载并解码…');
+  try{
+    const res = await fetch(url, {mode:'cors'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const ab = await res.arrayBuffer();
+    if(ab.byteLength > 30*1024*1024){ showToast('文件过大（>30MB）'); return; }
+    ensureBgmCtx();
+    const decoded = await new Promise((res2, rej2)=>bgmAudioCtx.decodeAudioData(ab, res2, rej2));
+    bgmUserBuffer = decoded;
+    bgmSourceLabel = url;
+    updateBgmSourceLabel();
+    if(bgmSource){ try{ bgmSource.stop(); }catch(e){} bgmSource = null; }
+    showToast('✓ 已加载远程音频（约 ' + Math.round(decoded.duration) + ' 秒）');
+  }catch(e){
+    let msg = e.message || '加载失败';
+    if(/Failed to fetch|cors/i.test(msg)) msg = '网络/CORS 失败：URL 需服务端支持跨域（CORS）';
+    showToast('远程音频加载失败：' + msg);
+  }
+}
+function updateBgmSourceLabel(){
+  const txt = $('#bgmSourceText');
+  if(txt){
+    if(bgmUserBuffer){
+      txt.textContent = '用户音源：' + bgmSourceLabel + '（约 ' + Math.round(bgmUserBuffer.duration) + ' 秒）';
+      txt.style.color = 'var(--success)';
+    } else {
+      const style = $('#bgmStyle') ? $('#bgmStyle').value : '';
+      txt.textContent = '程序化合成（' + (style==='none'?'无 BGM':style) + '）';
+      txt.style.color = 'var(--muted)';
+    }
+  }
+}
 function stopBGM(){
   if(bgmSource){ try{ bgmSource.stop(); }catch(e){} bgmSource = null; }
 }
 function downloadBGM(){
   const style = $('#bgmStyle').value;
-  if(style==='none'){ showToast('当前是无 BGM，无需下载'); return; }
+  if(style==='none' && !bgmUserBuffer){ showToast('当前是无 BGM，无需下载'); return; }
+  if(bgmUserBuffer){
+    showToast('正在打包用户音源为 WAV…');
+    setTimeout(()=>{
+      const wav = audioBufferToWav(bgmUserBuffer);
+      const blob = new Blob([wav], {type:'audio/wav'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const fname = (bgmSourceLabel||'bgm').replace(/[^\w一-龥.-]/g,'_').slice(0,40) + '.wav';
+      a.download = fname;
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+      showToast('已下载：'+fname);
+    }, 50);
+    return;
+  }
   showToast('正在合成并打包 WAV…');
   setTimeout(()=>{
     const sample = renderBGM(style, 30);
