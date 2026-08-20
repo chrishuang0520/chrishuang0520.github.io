@@ -134,6 +134,22 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
 .paper-item .pj-actions{display:flex;gap:8px;flex-wrap:wrap}
 .paper-empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px}
 .pj-summary{margin-top:10px;padding:12px 14px;background:#fff;border:1px solid var(--border);border-radius:10px;font-size:13.5px;line-height:1.8;white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto;color:#2c3e50}
+/* ===== 医药热点雷达 ===== */
+.ht-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px;padding:12px 16px}
+.ht-card{border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--bg);display:flex;flex-direction:column;gap:6px;transition:box-shadow .15s}
+.ht-card:hover{box-shadow:0 2px 10px rgba(13,148,136,.12)}
+.ht-cat{display:inline-block;align-self:flex-start;font-size:11px;font-weight:700;padding:2px 9px;border-radius:10px}
+.ht-cat-rd{background:#EBF8FF;color:#1D6FB8}
+.ht-cat-cl{background:#E8F6EE;color:#1D7A4F}
+.ht-cat-sec{background:#FDF0E7;color:#C2620D}
+.ht-cat-oth{background:#F1EDFB;color:#6B4FB8}
+.ht-title{font-size:14.5px;font-weight:600;line-height:1.5}
+.ht-title a{color:inherit;text-decoration:none}
+.ht-title a:hover{color:var(--primary)}
+.ht-summary{font-size:12.5px;color:var(--muted);line-height:1.7;flex:1}
+.ht-meta{font-size:11.5px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ht-meta .src{font-weight:600;color:var(--primary-dark)}
+.ht-actions{display:flex;gap:6px}
 .chip-plat{background:#EEF2F1;color:var(--muted)}
 .chip-p0{background:var(--danger-soft);color:var(--danger)}
 .chip-p1{background:var(--warning-soft);color:var(--warning)}
@@ -377,6 +393,21 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
       <div class="paper-journals" id="paperJournals"></div>
       <div class="paper-list" id="paperList">
         <div class="paper-empty">选择时间范围（默认近 1 年）→ 点「搜索顶刊论文」，自动检索 Nature / Science / Cell / NEJM / Lancet / Nat Med 上肿瘤药物研发与临床数据的最新论文（最多 5 篇）。搜到后可点「生成中文要点摘要」由 AI 提炼论点/论据/亮点。</div>
+      </div>
+    </div>
+    <div class="paper-tracker" id="hotTopicsTracker">
+      <div class="paper-tracker-head">
+        <div class="pt-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1 4 4 5 4 9a4 4 0 0 1-8 0c0-1 .5-2 1-3-2 1-3 3-3 5a6 6 0 0 0 12 0c0-5-4-7-6-11z"/></svg>
+          医药热点雷达 · 研发 / 临床 / 证券市场
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span id="hotTopicsMeta" style="font-size:12px;color:var(--muted)"></span>
+          <button class="btn btn-primary" id="hotTopicsBtn" onclick="fetchHotTopics(true)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 3v6h-6"/></svg>抓取本周热点</button>
+        </div>
+      </div>
+      <div class="paper-list" id="hotTopicsList">
+        <div class="paper-empty">每周自动抓取 10 个医药热点话题（新药研发 / 临床试验 / 证券市场 / 政策行业），每个带梗概和信息出处，点「加入选题」直接进灵感看板。</div>
       </div>
     </div>
     <div class="kanban" id="kanban"></div>
@@ -1358,6 +1389,212 @@ async function createArticleFromPaper(index){
   updateAIPanel();
   renderRefBar();
   showToast(fullText ? '已带入论文全文，AI 将通读全文后创作 ✓' : '该论文未开放全文，已带入摘要创作');
+}
+
+/* ================= 医药热点雷达 ================= */
+// 代理 URL 智能拼接（复用 videoFetch 同款逻辑）
+function buildProxyUrl(proxy, url){
+  const p = proxy.replace(/\/+$/,'');
+  if(/[?&]url=$/.test(p)) return p + encodeURIComponent(url);
+  if(p.includes('?')) return p + '&url=' + encodeURIComponent(url);
+  return p + '?url=' + encodeURIComponent(url);
+}
+// RSS 抓取：多级尝试（用户 Worker 代理 → codetabs → allorigins → 直连）
+async function rssFetch(url){
+  const proxy = (state.aiConfig && state.aiConfig.videoProxy) ? state.aiConfig.videoProxy.trim() : '';
+  const attempts = [];
+  if(proxy) attempts.push(buildProxyUrl(proxy, url));
+  attempts.push('https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url));
+  attempts.push('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
+  attempts.push(url);
+  for(const u of attempts){
+    try{
+      const ctl = new AbortController();
+      const timer = setTimeout(()=>ctl.abort(), 12000);
+      const r = await fetch(u, {signal: ctl.signal});
+      clearTimeout(timer);
+      if(r.ok){
+        const t = await r.text();
+        if(t && t.length > 300 && (t.includes('<item') || t.includes('<entry'))) return t;
+      }
+    }catch(e){ /* 试下一个 */ }
+  }
+  return '';
+}
+// 解析 RSS/Atom XML 为条目数组
+function parseRSS(xmlText, category){
+  const items = [];
+  try{
+    const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+    const nodes = doc.querySelectorAll('item');
+    nodes.forEach(n=>{
+      const title = (n.querySelector('title')?.textContent || '').trim();
+      const link = (n.querySelector('link')?.textContent || n.querySelector('link')?.getAttribute('href') || '').trim();
+      const pubDate = (n.querySelector('pubDate')?.textContent || '').trim();
+      const source = (n.querySelector('source')?.textContent || '').trim();
+      if(!title || !link) return;
+      items.push({title, link, pubDate, source, category});
+    });
+  }catch(e){}
+  return items;
+}
+// 抓一路 Google News RSS（中文，近 7 天）
+async function fetchGoogleNewsRSS(query, category){
+  const rssUrl = 'https://news.google.com/rss/search?q=' + encodeURIComponent(query + ' when:7d') + '&hl=zh-CN&gl=CN&ceid=CN:zh-Hans';
+  const xml = await rssFetch(rssUrl);
+  return parseRSS(xml, category);
+}
+// 抓 PubMed 近 7 天顶刊肿瘤药物（热点雷达版，简化）
+async function fetchPubMedHot(){
+  const topic = '(cancer[tiab] OR tumor[tiab] OR oncology[tiab]) AND (drug[tiab] OR therapy[tiab] OR immunotherapy[tiab] OR antibody[tiab] OR "clinical trial"[tiab])';
+  const journals = '"Nature"[Journal] OR "Science"[Journal] OR "Cell"[Journal] OR "N Engl J Med"[Journal] OR "Lancet"[Journal] OR "Nat Med"[Journal]';
+  const end = new Date();
+  const start = addDays(end, -7);
+  const url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=' +
+    encodeURIComponent(topic + ' AND (' + journals + ')') +
+    '&retmax=6&sort=pub_date&retmode=json&mindate=' + fmtDate(start).replace(/-/g,'/') + '&maxdate=' + fmtDate(end).replace(/-/g,'/') + '&datetype=pdat';
+  try{
+    const res = await fetch(url);
+    const data = await res.json().catch(()=>({}));
+    const ids = (data.esearchresult && data.esearchresult.idlist) || [];
+    if(!ids.length) return [];
+    // esummary 拿标题
+    const su = await fetch('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=' + ids.join(',') + '&retmode=json');
+    const sud = await su.json().catch(()=>({}));
+    const result = sud.result || {};
+    return ids.map(id=>{
+      const r = result[id] || {};
+      return {
+        title: (r.title || '').replace(/\.$/,''),
+        link: 'https://pubmed.ncbi.nlm.nih.gov/' + id + '/',
+        pubDate: r.pubdate || '',
+        source: (r.source || 'PubMed'),
+        category: '研发'
+      };
+    }).filter(x=>x.title);
+  }catch(e){ return []; }
+}
+// 主流程：抓取本周热点（force=true 手动刷新）
+async function fetchHotTopics(force){
+  const WEEK_MS = 7*24*60*60*1000;
+  const cached = state.hotTopics;
+  if(!force && cached && cached.items && cached.items.length && cached.lastFetch && (Date.now() - cached.lastFetch < WEEK_MS)){
+    renderHotTopics();
+    return; // 缓存未过期
+  }
+  const btn = $('#hotTopicsBtn');
+  const list = $('#hotTopicsList');
+  const oldHtml = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px"></span>抓取中…'; }
+  if(list) list.innerHTML = '<div class="paper-empty">正在抓取本周热点（Google News 研发/临床/证券 + PubMed 顶刊，约 5-15 秒）…<br><span class="spinner" style="margin:12px auto"></span></div>';
+  try{
+    // 并行抓 5 路：Google News × 4 + PubMed × 1
+    const [rd, cl, sec, gen, pm] = await Promise.all([
+      fetchGoogleNewsRSS('医药 新药 研发', '研发'),
+      fetchGoogleNewsRSS('临床试验 肿瘤 患者', '临床'),
+      fetchGoogleNewsRSS('医药股 生物科技 股市', '证券'),
+      fetchGoogleNewsRSS('生物医药 政策 审批', '其他'),
+      fetchPubMedHot()
+    ]);
+    let raw = [].concat(rd, cl, sec, gen, pm);
+    if(!raw.length) throw new Error('所有数据源都抓取失败（网络/代理问题）');
+    // 标题去重
+    const seen = new Set();
+    raw = raw.filter(x=>{ const k = x.title.slice(0,30); if(seen.has(k)) return false; seen.add(k); return true; });
+    // 有 LLM Key → AI 精选 10 个（带梗概、均衡覆盖三大板块）
+    let items = [];
+    if(curAccount().apiKey){
+      try{
+        const feed = raw.slice(0, 45).map((x,i)=>`[${i}] (${x.category}) ${x.title} | ${x.source}`).join('\n');
+        const sys = '你是生物医药行业分析师兼内容策划，擅长从新闻流中挑选最有科普创作价值的话题。只输出 JSON。';
+        const user = `下面是本周从 Google News 和 PubMed 抓到的医药热点条目（带分类标签）：\n${feed}\n\n请精选出 10 个最有内容创作价值的话题，要求：\n1) 必须均衡覆盖：研发（新药/技术平台）至少3个、临床（试验数据/审批）至少3个、证券市场（股价/融资/并购）至少2个，其余可为政策/行业事件\n2) 每个话题输出 JSON：{"idx": 原条目序号, "title": "20字内中文标题", "summary": "60-90字梗概（这件事是什么+为什么值得写+对大众/患者的看点）", "category": "研发|临床|证券|其他"}\n3) 优先选：中国相关、肿瘤领域、数据明确、大众关心的话题\n4) 只输出一个 JSON 数组（10个对象），禁止其他文字`;
+        const text = await callLLM([{role:'system',content:sys},{role:'user',content:user}], {maxTokens: 3000, temperature: 0.6, useJsonFormat: true});
+        const picked = parseScriptJSON(text);
+        if(Array.isArray(picked) && picked.length){
+          picked.forEach(p=>{
+            const srcItem = raw[p.idx];
+            if(!srcItem) return;
+            items.push({
+              title: p.title || srcItem.title.slice(0,30),
+              summary: p.summary || '',
+              category: p.category || srcItem.category,
+              link: srcItem.link,
+              source: srcItem.source || 'Google News',
+              pubDate: srcItem.pubDate || ''
+            });
+          });
+        }
+      }catch(e){ /* AI 精选失败 → 降级 */ }
+    }
+    // 降级：无 Key 或 AI 失败 → 按分类轮转取 10 个
+    if(!items.length){
+      const byCat = {研发:[], 临床:[], 证券:[], 其他:[]};
+      raw.forEach(x=>{ (byCat[x.category]||byCat['其他']).push(x); });
+      const order = ['研发','临床','证券','其他'];
+      order.forEach(c=>byCat[c].sort((a,b)=>(b.pubDate||'').localeCompare(a.pubDate||'')));
+      let i = 0;
+      while(items.length < 10 && order.some(c=>byCat[c].length)){
+        const c = order[i % 4];
+        if(byCat[c].length) items.push(Object.assign(byCat[c].shift(), {summary:''}));
+        i++;
+        if(i > 40) break;
+      }
+    }
+    state.hotTopics = { lastFetch: Date.now(), items };
+    save();
+    renderHotTopics();
+    showToast(`已抓取 ${items.length} 个热点话题 ✓（含 ${items.filter(x=>x.category==='研发').length} 研发 / ${items.filter(x=>x.category==='临床').length} 临床 / ${items.filter(x=>x.category==='证券').length} 证券）`);
+  }catch(e){
+    let msg = e.message || '抓取失败';
+    const proxy = (state.aiConfig && state.aiConfig.videoProxy) ? '已' : '未';
+    if(list) list.innerHTML = `<div class="paper-empty" style="color:var(--danger)">热点抓取失败：${esc(msg)}<br><span style="font-size:12px;color:var(--muted)">提示：Google News 需要代理转发（当前${proxy}配置视频 CORS 代理${proxy==='已'?'，若代理失效请检查 Worker':''}）。配置路径：⚙ AI 设置 → 视频生成 → 视频 CORS 代理地址。PubMed 通常不受影响。</span></div>`;
+    showToast('热点抓取失败：'+msg);
+  }finally{
+    if(btn){ btn.disabled = false; btn.innerHTML = oldHtml; }
+  }
+}
+// 渲染热点卡片
+function renderHotTopics(){
+  const list = $('#hotTopicsList');
+  const meta = $('#hotTopicsMeta');
+  if(!list) return;
+  const ht = state.hotTopics;
+  if(!ht || !ht.items || !ht.items.length){ return; }
+  const days = Math.floor((Date.now() - ht.lastFetch) / 86400000);
+  if(meta) meta.textContent = `更新于 ${days===0?'今天':days+' 天前'} · ${ht.items.length} 个话题` + (days>=7 ? ' · 已过期，建议刷新' : '');
+  const catCls = c => c==='研发'?'ht-cat-rd':c==='临床'?'ht-cat-cl':c==='证券'?'ht-cat-sec':'ht-cat-oth';
+  list.innerHTML = '<div class="ht-grid">' + ht.items.map((x,i)=>`
+    <div class="ht-card">
+      <span class="ht-cat ${catCls(x.category)}">${esc(x.category)}</span>
+      <div class="ht-title"><a href="${esc(x.link)}" target="_blank" rel="noopener" title="查看原文">${esc(x.title)}</a></div>
+      ${x.summary?`<div class="ht-summary">${esc(x.summary)}</div>`:''}
+      <div class="ht-meta"><span class="src">${esc(x.source||'')}</span><span>${esc((x.pubDate||'').slice(0,16))}</span></div>
+      <div class="ht-actions">
+        <button class="btn btn-sm btn-primary" onclick="addHotTopicToIdeas(${i})">＋ 加入选题</button>
+      </div>
+    </div>
+  `).join('') + '</div>';
+}
+// 热点一键加入选题看板（灵感列）
+function addHotTopicToIdeas(i){
+  const ht = state.hotTopics;
+  if(!ht || !ht.items || !ht.items[i]){ showToast('话题数据缺失'); return; }
+  const t = ht.items[i];
+  const catMap = {'研发':'科普','临床':'临床招募','证券':'BD合作','其他':'科普'};
+  state.ideas.push({
+    id: uid(),
+    title: t.title,
+    category: catMap[t.category] || '科普',
+    priority: 'P2',
+    status: 'inspiration',
+    platforms: ['公众号'],
+    dueDate: '',
+    note: (t.summary ? t.summary + '\n\n' : '') + '出处：' + (t.source||'') + '\n' + t.link,
+    createdAt: todayStr(),
+    updatedAt: todayStr()
+  });
+  save(); renderAll();
+  showToast('已加入「灵感」列 ✓');
 }
 
 /* ================= 选题看板 ================= */
@@ -3836,6 +4073,19 @@ function init(){
   }
   renderRefBar();
   renderAll();
+  // 医药热点雷达：有缓存先渲染；超过 7 天静默自动抓取（每周自动刷新）
+  (async ()=>{
+    const ht = state.hotTopics;
+    if(ht && ht.items && ht.items.length){
+      renderHotTopics();
+      const WEEK_MS = 7*24*60*60*1000;
+      if(Date.now() - (ht.lastFetch||0) > WEEK_MS){
+        setTimeout(()=>fetchHotTopics(true), 3000); // 延迟 3 秒避免抢启动资源
+      }
+    } else {
+      setTimeout(()=>fetchHotTopics(false), 3000);
+    }
+  })();
   // 云同步：已启用则拉取云端数据，否则显示本地存储
   if(state.sync && state.sync.enabled && state.sync.token){ syncPull(); }
   else { setSyncStatus('local'); }
