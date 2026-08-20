@@ -681,6 +681,9 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
       <label>视频模型</label>
       <input class="input" id="cfgVideoModel" placeholder="MiniMax-H3">
     </div>
+    <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:6px" onclick="testVideoKey()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>检测视频 Key 是否有效
+    </button>
     <div style="border-top:1px solid var(--border);margin:16px 0 2px;padding-top:14px;font-size:13px;font-weight:700;color:var(--primary)">图像生成（公众号配图）</div>
     <p class="section-tip" style="font-size:12px;color:var(--muted);margin:6px 0 10px">⭐ 推荐 <b>MiniMax image-01</b>（便宜·质量好·可复用 MiniMax 订阅/Coding Plan Key）。也支持 OpenAI 兼容 /images/generations（OpenAI、智谱、通义万相等）。</p>
     <div class="field" style="margin-top:10px">
@@ -2437,7 +2440,7 @@ async function generateVideo(){
     throw new Error('生成超时，请稍后重试');
   }catch(e){
     let msg = e.message || '生成失败';
-    if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败，请检查视频接口地址与网络';
+    if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败：无法访问 '+vBase+'。<br>常见原因：<br>1) 浏览器拦截了 CORS 跨域（打开浏览器 Network 标签看具体状态）<br>2) 当前网络无法访问 MiniMax 视频接口（api.minimax.io）<br>3) 视频接口地址（齿轮→视频生成→接口地址）填错了<br>4) 视频 Key 无效或未开通视频生成权限（需 MiniMax Coding Plan 订阅）';
     if(/1004|authorization|unauthorized|invalid api key|authentication|401|403|login fail/i.test(msg)){
       msg = '视频 API Key 无效或缺失 — 点右上角齿轮，检查「视频 API Key」是否正确';
     }
@@ -2445,7 +2448,7 @@ async function generateVideo(){
     if(/duration|resolution|invalid param|参数/i.test(msg)){
       msg += '。<br><b>提示：</b>如果选择了 30/45/60 秒时长，MiniMax H3 可能不支持（常见支持 5-10 秒），请改用 10 或 15 秒重试';
     }
-    $('#aiOutBody').innerHTML = `<div class="empty" style="color:var(--danger)">视频生成失败：${esc(msg)}</div>`;
+    $('#aiOutBody').innerHTML = `<div class="empty" style="color:var(--danger);padding:24px 20px">视频生成失败：${esc(msg)}<div style="margin-top:12px"><button class="btn btn-sm" onclick="testVideoKey()" style="margin-right:6px">🔍 检测视频 Key</button><button class="btn btn-sm" onclick="openSettings()">⚙ 打开设置</button></div></div>`;
   }finally{
     btn.disabled = false;
   }
@@ -3172,6 +3175,30 @@ async function testImageKey(){
   }catch(e){
     let msg = e.message || '检测失败';
     if(/Failed to fetch|fetch|NetworkError/i.test(msg)) msg = '网络失败，检查图像接口地址';
+    showToast('❌ '+msg);
+  }
+}
+async function testVideoKey(){
+  const apiKey = $('#cfgVideoKey').value.trim();
+  const base = ($('#cfgVideoBase').value.trim() || 'https://api.minimax.io').replace(/\/+$/,'');
+  const model = $('#cfgVideoModel').value.trim() || 'MiniMax-H3';
+  if(!apiKey){ showToast('请先填写视频 API Key'); return; }
+  showToast('正在检测视频 Key…');
+  try{
+    // 用一个无效 task_id 去 query，如果 Key 错会返 401/403；网络错会抛 Failed to fetch
+    const probeId = 'probe_' + Date.now();
+    const res = await fetch(base + '/v2/query/video_generation/' + probeId, {
+      method:'GET',
+      headers:{ 'Authorization':'Bearer '+apiKey }
+    });
+    const d = await res.json().catch(()=>({}));
+    // 任意 HTTP 状态（非网络错误）都说明连通 + Key 有效（即使是 401/404/200 都算"链路通"）
+    showToast('✅ 视频接口可达（HTTP '+res.status+'），Key 可用');
+  }catch(e){
+    let msg = e.message || '检测失败';
+    if(/Failed to fetch|fetch|NetworkError/i.test(msg)){
+      msg = '网络失败：无法访问 '+base + '。可能原因：①浏览器拦截 CORS ②当前网络无法访问 MiniMax 视频接口 ③接口地址填错';
+    }
     showToast('❌ '+msg);
   }
 }
