@@ -1439,13 +1439,16 @@ function parseRSS(xmlText, category){
   return items;
 }
 // 抓一路 Google News RSS（中文，近 7 天）
-async function fetchGoogleNewsRSS(query, category){
-  const rssUrl = 'https://news.google.com/rss/search?q=' + encodeURIComponent(query + ' when:7d') + '&hl=zh-CN&gl=CN&ceid=CN:zh-Hans';
+async function fetchGoogleNewsRSS(query, category, when){
+  const whenStr = when || '7d';
+  const rssUrl = 'https://news.google.com/rss/search?q=' + encodeURIComponent(query + ' when:' + whenStr) + '&hl=zh-CN&gl=CN&ceid=CN:zh-Hans';
   const xml = await rssFetch(rssUrl);
   return parseRSS(xml, category);
 }
-// 抓 PubMed 近 7 天顶刊肿瘤药物（热点雷达版，简化）
-async function fetchPubMedHot(category){
+// 抓 PubMed 顶刊肿瘤创新药论文（热点雷达版，分类检索）
+// category: '研发' | '临床' | 通用；days: 检索窗口天数（默认 90）
+async function fetchPubMedHot(category, days){
+  const DAYS = days || 90;
   // 分类关键词：研发聚焦机制/技术/早期发现，临床聚焦试验/疗效/生存期/监管
   const topicByCat = {
     '研发': '(cancer[tiab] OR tumor[tiab] OR oncology[tiab]) AND (mechanism[tiab] OR discovery[tiab] OR pathway[tiab] OR target[tiab] OR inhibitor[tiab] OR antibody[tiab] OR "CAR-T"[tiab] OR ADC[tiab] OR immunotherapy[tiab] OR gene[tiab] OR mutation[tiab] OR biomarker[tiab] OR mRNA[tiab] OR CRISPR[tiab]) NOT ("clinical trial"[Publication Type] OR "randomized controlled trial"[Publication Type])',
@@ -1453,9 +1456,9 @@ async function fetchPubMedHot(category){
   };
   const topic = topicByCat[category] || '(cancer[tiab] OR tumor[tiab] OR oncology[tiab]) AND (drug[tiab] OR therapy[tiab] OR treatment[tiab])';
   const journals = '"Nature"[Journal] OR "Science"[Journal] OR "Cell"[Journal] OR "N Engl J Med"[Journal] OR "Lancet"[Journal] OR "Nat Med"[Journal] OR "Nature Medicine"[Journal]';
-  // 检索窗口：14 天（顶刊一周 3-5 篇，7 天太苛刻）
+  // 检索窗口：默认 90 天（创新药研发/临床关注近 3 个月）
   const end = new Date();
-  const start = addDays(end, -14);
+  const start = addDays(end, -DAYS);
   const url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=' +
     encodeURIComponent(topic + ' AND (' + journals + ')') +
     '&retmax=10&sort=pub_date&retmode=json&mindate=' + fmtDate(start).replace(/-/g,'/') + '&maxdate=' + fmtDate(end).replace(/-/g,'/') + '&datetype=pdat';
@@ -1480,15 +1483,15 @@ async function fetchPubMedHot(category){
     }).filter(x=>x.title);
   }catch(e){ return []; }
 }
-// 抓美国 FDA 最近 7 天批准的药物（openFDA 官方 API，支持浏览器直连）
-async function fetchFDAApprovals(){
+// 抓美国 FDA 最近批准的创新药（openFDA 官方 API，支持浏览器直连）；days 默认 90
+async function fetchFDAApprovals(days){
   try{
     const end = new Date();
-    const start = addDays(end, -14);
+    const start = addDays(end, -(days || 90));
     const d = s => s.replace(/-/g,'');
     const url = 'https://api.fda.gov/drug/drugsfda.json?search=' +
       encodeURIComponent('submissions.submission_status_date:[' + d(fmtDate(start)) + '+TO+' + d(fmtDate(end)) + ']') +
-      '&limit=15&sort=submissions.submission_status_date:desc';
+      '&limit=20&sort=submissions.submission_status_date:desc';
     const res = await fetch(url);
     if(!res.ok) return [];
     const data = await res.json().catch(()=>({}));
@@ -1500,9 +1503,9 @@ async function fetchFDAApprovals(){
         .sort((a,b)=>(b.submission_status_date||'').localeCompare(a.submission_status_date||''));
       if(!subs.length) return;
       const sub = subs[0];
-      // 只保留最近 7 天内批准的
+      // 只保留最近 90 天内批准的
       const dateStr = (sub.submission_status_date || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
-      if(!dateStr || dateStr < fmtDate(addDays(new Date(), -7))) return;
+      if(!dateStr || dateStr < fmtDate(addDays(new Date(), -90))) return;
       const prod = (app.products && app.products[0]) || {};
       const brand = prod.brand_name || '';
       const ing = (prod.active_ingredients && prod.active_ingredients[0] && prod.active_ingredients[0].name) || '';
@@ -1519,9 +1522,9 @@ async function fetchFDAApprovals(){
     return items;
   }catch(e){ return []; }
 }
-// 抓中国 CDE/NMPA 监管动态（CDE 官网反爬+动态加载，用媒体报道间接源）
+// 抓中国 CDE/NMPA 监管动态（CDE 官网反爬+动态加载，用媒体报道间接源，近 3 个月）
 async function fetchCDENews(){
-  const xml = await rssFetch('https://news.google.com/rss/search?q=' + encodeURIComponent('CDE OR NMPA 受理 OR 批准 OR 优先审评 药 when:7d') + '&hl=zh-CN&gl=CN&ceid=CN:zh-Hans');
+  const xml = await rssFetch('https://news.google.com/rss/search?q=' + encodeURIComponent('CDE OR NMPA 受理 OR 批准 OR 优先审评 药 when:3m') + '&hl=zh-CN&gl=CN&ceid=CN:zh-Hans');
   return parseRSS(xml, '临床').map(x=>Object.assign(x, {source: (x.source || '媒体') + ' · CDE/NMPA 动态'}));
 }
 // 后端硬校验：按 source 强制约束 category，避免 AI 把财经新闻错分成研发/临床
@@ -1601,19 +1604,17 @@ async function fetchHotTopics(force){
   const list = $('#hotTopicsList');
   const oldHtml = btn ? btn.innerHTML : '';
   if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px"></span>抓取中…'; }
-  if(list) list.innerHTML = '<div class="paper-empty">正在抓取本周热点（PubMed 顶刊 14 天 + FDA 14 天 + CDE/NMPA + Google News 证券/其他，约 8-20 秒）…<br><span class="spinner" style="margin:12px auto"></span></div>';
+  if(list) list.innerHTML = '<div class="paper-empty">正在抓取热点（研发/临床 = 顶刊+FDA+CDE 近3个月创新药；证券/其他 = 财经新闻近7天，约 8-20 秒）…<br><span class="spinner" style="margin:12px auto"></span></div>';
   try{
-    // 并行抓 5 路：Google News × 4 + PubMed × 1
-    // 数据源策略：研发 3 从 PubMed 顶刊 + FDA；临床 3 从 PubMed 顶刊 + FDA 批准 + CDE/NMPA 动态
-    //            证券 3 + 其他 1 从 Google News 来
+    // 数据源策略：研发 3 + 临床 3 用近 3 个月（创新药研发/临床周期），证券 3 + 其他 1 用近 7 天（市场时效）
     const [rd, cl, sec, gen, pm, fda, cde] = await Promise.all([
-      fetchPubMedHot('研发'),
-      fetchPubMedHot('临床'),
-      fetchGoogleNewsRSS('医药股 生物科技 股市', '证券'),
-      fetchGoogleNewsRSS('生物医药 政策 审批', '其他'),
-      fetchPubMedHot('研发'), // 备用池
-      fetchFDAApprovals(),    // FDA 官方批准（openFDA API 直连）
-      fetchCDENews()          // CDE/NMPA 监管动态（媒体报道）
+      fetchPubMedHot('研发', 90),                       // 研发：顶刊近 3 个月创新药
+      fetchPubMedHot('临床', 90),                       // 临床：顶刊近 3 个月临床试验
+      fetchGoogleNewsRSS('医药股 生物科技 股市', '证券', '7d'), // 证券：近 7 天市场
+      fetchGoogleNewsRSS('生物医药 政策 审批', '其他', '7d'),   // 其他：近 7 天政策
+      fetchPubMedHot('研发', 90),                       // 备用池
+      fetchFDAApprovals(90),                           // FDA 官方批准（近 3 个月）
+      fetchCDENews()                                   // CDE/NMPA 监管动态（近 3 个月）
     ]);
     let raw = [].concat(rd, cl, fda, cde, sec, gen, pm);
     // 后端硬校验：按 source 强制约束 category
@@ -1628,7 +1629,7 @@ async function fetchHotTopics(force){
       try{
         const feed = raw.slice(0, 50).map((x,i)=>`[${i}] (${x.category}|${x.source}) ${x.title}`).join('\n');
         const sys = '你是生物医药行业分析师兼内容策划，擅长从专业论文和市场新闻中挑选最有科普创作价值的话题。只输出 JSON。';
-        const user = `下面是本周从 PubMed 顶刊（Nature/Science/Cell/NEJM/Lancet/Nat Med 近 7 天肿瘤药物论文）、美国 FDA 官方（openFDA 药物批准）、CDE/NMPA 监管动态（媒体报道）和 Google News 抓到的热点条目（带分类标签和来源）：\n${feed}\n\n请精选出 10 个最有内容创作价值的话题。【数量硬性要求】恰好：3 个研发 + 3 个临床 + 3 个证券 + 1 个其他，共 10 个不多不少：\n- 研发（机制/技术/靶点/早期发现，来源为 PubMed 顶刊）恰好 3 个\n- 临床（试验数据/疗效/生存期/审批，来源为 PubMed 顶刊临床试验、FDA 官方批准、CDE/NMPA 动态）恰好 3 个\n- 证券（股价/融资/并购/IPO，来源为 Google News 财经）恰好 3 个\n- 其他（政策/人物/行业事件）恰好 1 个\n每个话题输出 JSON：{"idx": 原条目序号, "title": "20字内中文标题", "summary": "60-90字梗概（这件事是什么+为什么值得写+对大众/患者的看点）", "category": "研发|临床|证券|其他"}\n重要：\n- 研发/临床条目只用 PubMed 顶刊、FDA 官方、CDE/NMPA 来源；证券条目用 Google News 财经来源\n- FDA 批准和 CDE/NMPA 受理/优先审评是最有价值的临床类话题，优先选\n- 优先选：肿瘤领域、数据明确、大众关心的话题\n- 剔除仅含"股价行情""研报数据"等纯财经的伪研发条目\n只输出一个 JSON 数组（恰好10个对象），禁止其他文字`;
+        const user = `下面是抓到的医药热点条目（带分类标签和来源）：研发/临床来自 PubMed 顶刊近 3 个月肿瘤创新药论文、美国 FDA 官方近 3 个月批准、CDE/NMPA 近 3 个月监管动态；证券/其他来自 Google News 近 7 天：\n${feed}\n\n请精选出 10 个最有内容创作价值的话题。【数量硬性要求】恰好：3 个研发 + 3 个临床 + 3 个证券 + 1 个其他，共 10 个不多不少：\n- 研发（创新药机制/技术/靶点/早期发现，来源为 PubMed 顶刊）恰好 3 个\n- 临床（创新药试验数据/疗效/生存期/审批，来源为 PubMed 顶刊临床试验、FDA 官方批准、CDE/NMPA 动态）恰好 3 个\n- 证券（股价/融资/并购/IPO，来源为 Google News 财经，近 7 天）恰好 3 个\n- 其他（政策/人物/行业事件）恰好 1 个\n每个话题输出 JSON：{"idx": 原条目序号, "title": "20字内中文标题", "summary": "60-90字梗概（这件事是什么+为什么值得写+对大众/患者的看点）", "category": "研发|临床|证券|其他"}\n重要：\n- 研发/临床条目只用 PubMed 顶刊、FDA 官方、CDE/NMPA 来源；证券条目用 Google News 财经来源\n- FDA 批准和 CDE/NMPA 受理/优先审评是最有价值的临床类话题，优先选\n- 聚焦创新药（新靶点/新机制/ADC/双抗/CAR-T/基因疗法等），优先选肿瘤领域、数据明确、大众关心的话题\n- 剔除仅含"股价行情""研报数据"等纯财经的伪研发条目\n只输出一个 JSON 数组（恰好10个对象），禁止其他文字`;
         const text = await callLLM([{role:'system',content:sys},{role:'user',content:user}], {maxTokens: 3000, temperature: 0.6, useJsonFormat: true});
         const picked = parseScriptJSON(text);
         if(Array.isArray(picked) && picked.length){
