@@ -1453,11 +1453,12 @@ async function fetchPubMedHot(category){
   };
   const topic = topicByCat[category] || '(cancer[tiab] OR tumor[tiab] OR oncology[tiab]) AND (drug[tiab] OR therapy[tiab] OR treatment[tiab])';
   const journals = '"Nature"[Journal] OR "Science"[Journal] OR "Cell"[Journal] OR "N Engl J Med"[Journal] OR "Lancet"[Journal] OR "Nat Med"[Journal] OR "Nature Medicine"[Journal]';
+  // 检索窗口：14 天（顶刊一周 3-5 篇，7 天太苛刻）
   const end = new Date();
-  const start = addDays(end, -7);
+  const start = addDays(end, -14);
   const url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=' +
     encodeURIComponent(topic + ' AND (' + journals + ')') +
-    '&retmax=6&sort=pub_date&retmode=json&mindate=' + fmtDate(start).replace(/-/g,'/') + '&maxdate=' + fmtDate(end).replace(/-/g,'/') + '&datetype=pdat';
+    '&retmax=10&sort=pub_date&retmode=json&mindate=' + fmtDate(start).replace(/-/g,'/') + '&maxdate=' + fmtDate(end).replace(/-/g,'/') + '&datetype=pdat';
   try{
     const res = await fetch(url);
     const data = await res.json().catch(()=>({}));
@@ -1483,11 +1484,11 @@ async function fetchPubMedHot(category){
 async function fetchFDAApprovals(){
   try{
     const end = new Date();
-    const start = addDays(end, -7);
+    const start = addDays(end, -14);
     const d = s => s.replace(/-/g,'');
     const url = 'https://api.fda.gov/drug/drugsfda.json?search=' +
       encodeURIComponent('submissions.submission_status_date:[' + d(fmtDate(start)) + '+TO+' + d(fmtDate(end)) + ']') +
-      '&limit=10&sort=submissions.submission_status_date:desc';
+      '&limit=15&sort=submissions.submission_status_date:desc';
     const res = await fetch(url);
     if(!res.ok) return [];
     const data = await res.json().catch(()=>({}));
@@ -1523,16 +1524,35 @@ async function fetchCDENews(){
   const xml = await rssFetch('https://news.google.com/rss/search?q=' + encodeURIComponent('CDE OR NMPA 受理 OR 批准 OR 优先审评 药 when:7d') + '&hl=zh-CN&gl=CN&ceid=CN:zh-Hans');
   return parseRSS(xml, '临床').map(x=>Object.assign(x, {source: (x.source || '媒体') + ' · CDE/NMPA 动态'}));
 }
-// 配额选取：严格 3研发 + 3临床 + 3证券 + 1其他 = 10 个
+// 后端硬校验：按 source 强制约束 category，避免 AI 把财经新闻错分成研发/临床
+const FINANCE_KW = ['雪球','新浪财经','澎湃','经济观察','东方财富','moomoo','格隆汇','华尔街','金色财经','财联社','finance','stock','股吧','财经网','基金','Reuters','Bloomberg','CNBC','NASDAQ','NYSE'];
+const PRO_KW = ['顶刊','fda','cde','nmpa','nature medicine','nature','science','cell','lancet','nejm','nat med','pubmed'];
+function validateCategory(item){
+  const src = (item.source || '').toLowerCase();
+  const isFinance = FINANCE_KW.some(kw => src.includes(kw.toLowerCase()));
+  const isPro = PRO_KW.some(kw => src.includes(kw.toLowerCase()));
+  // 财经源：只允许"证券"
+  if(isFinance && (item.category === '研发' || item.category === '临床')){
+    item.category = '证券';
+  }
+  // 专业源：不允许"证券"（AI 偶尔会把顶刊论文误归证券）
+  if(isPro && item.category === '证券'){
+    item.category = '临床';
+  }
+  return item;
+}
 // existing：已有条目（AI 精选结果，优先保留）；pool：原始条目池（补缺用）
+// 关键约束：专业池（研发/临床）只互相借调，绝不从证券/其他借（避免证券挤占专业位置）
 function pickByQuota(pool, existing){
   const QUOTA = {'研发':3, '临床':3, '证券':3, '其他':1};
+  const PRO = ['研发', '临床']; // 专业池，互补借调
   const byCat = {'研发':[], '临床':[], '证券':[], '其他':[]};
   (existing||[]).forEach(x=>{ (byCat[x.category]||byCat['其他']).push(x); });
   const used = new Set((existing||[]).map(x=>x.link));
   const poolByCat = {'研发':[], '临床':[], '证券':[], '其他':[]};
   (pool||[]).forEach(x=>{ if(!used.has(x.link)) (poolByCat[x.category]||poolByCat['其他']).push(x); });
   const out = [];
+  // 1) 各类先按配额保留/同类补足
   for(const c in QUOTA){
     out.push(...byCat[c].slice(0, QUOTA[c]));           // 保留（裁掉超配额的）
     const need = QUOTA[c] - Math.min(byCat[c].length, QUOTA[c]);
@@ -1540,16 +1560,33 @@ function pickByQuota(pool, existing){
       out.push(Object.assign(poolByCat[c].shift(), {summary: ''}));
     }
   }
-  // 某类原始池枯竭导致不足 10 → 从最大的富余池补齐（保持总数 10）
-  let guard = 0;
-  while(out.length < 10 && guard < 60){
-    guard++;
-    let best = null;
-    for(const c in poolByCat){ if(poolByCat[c].length && (!best || poolByCat[c].length > poolByCat[best].length)) best = c; }
-    if(!best) break;
-    out.push(Object.assign(poolByCat[best].shift(), {summary: ''}));
+  // 2) 专业池互借：研发<3 从临床借，临床<3 从研发借（互不挤占其他类）
+  const proDeficit = {};
+  for(const c of PRO){
+    proDeficit[c] = Math.max(0, QUOTA[c] - out.filter(x=>x.category===c).length);
   }
-  return out;
+  for(const c of PRO){
+    const other = c === '研发' ? '临床' : '研发';
+    let need = proDeficit[c];
+    while(need-- > 0 && poolByCat[other].length){
+      out.push(Object.assign(poolByCat[other].shift(), {category: c, summary: ''}));
+    }
+  }
+  // 3) 仍不足 10 → 优先继续从专业池 pool 借（保持专业分类不变）
+  let guard = 0;
+  while(out.length < 10 && guard < 30){
+    guard++;
+    let borrowed = false;
+    for(const c of PRO){
+      if(poolByCat[c].length){
+        out.push(Object.assign(poolByCat[c].shift(), {summary: ''}));
+        borrowed = true;
+        break;
+      }
+    }
+    if(!borrowed) break; // 专业池也空了，停止（证券/其他绝不动）
+  }
+  return out.slice(0, 10);
 }
 
 // 主流程：抓取本周热点（force=true 手动刷新）
@@ -1564,7 +1601,7 @@ async function fetchHotTopics(force){
   const list = $('#hotTopicsList');
   const oldHtml = btn ? btn.innerHTML : '';
   if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px"></span>抓取中…'; }
-  if(list) list.innerHTML = '<div class="paper-empty">正在抓取本周热点（Google News 研发/临床/证券 + PubMed 顶刊，约 5-15 秒）…<br><span class="spinner" style="margin:12px auto"></span></div>';
+  if(list) list.innerHTML = '<div class="paper-empty">正在抓取本周热点（PubMed 顶刊 14 天 + FDA 14 天 + CDE/NMPA + Google News 证券/其他，约 8-20 秒）…<br><span class="spinner" style="margin:12px auto"></span></div>';
   try{
     // 并行抓 5 路：Google News × 4 + PubMed × 1
     // 数据源策略：研发 3 从 PubMed 顶刊 + FDA；临床 3 从 PubMed 顶刊 + FDA 批准 + CDE/NMPA 动态
@@ -1579,6 +1616,8 @@ async function fetchHotTopics(force){
       fetchCDENews()          // CDE/NMPA 监管动态（媒体报道）
     ]);
     let raw = [].concat(rd, cl, fda, cde, sec, gen, pm);
+    // 后端硬校验：按 source 强制约束 category
+    raw = raw.map(validateCategory);
     if(!raw.length) throw new Error('所有数据源都抓取失败（网络/代理问题）');
     // 标题去重
     const seen = new Set();
@@ -1596,14 +1635,16 @@ async function fetchHotTopics(force){
           picked.forEach(p=>{
             const srcItem = raw[p.idx];
             if(!srcItem) return;
-            items.push({
+            const it = {
               title: p.title || srcItem.title.slice(0,30),
               summary: p.summary || '',
               category: p.category || srcItem.category,
               link: srcItem.link,
               source: srcItem.source || 'Google News',
               pubDate: srcItem.pubDate || ''
-            });
+            };
+            // AI 也可能错分类，后端硬校验
+            items.push(validateCategory(it));
           });
           // 配额校正：即使 AI 没严格遵循 3+3+3+1，也强制调整（多裁少补）
           items = pickByQuota(raw, items);
