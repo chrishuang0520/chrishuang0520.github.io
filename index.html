@@ -1823,6 +1823,12 @@ async function generateVideoScript(opts){
   }catch(e){
     let msg = e.message || '生成失败';
     if(/NO_KEY/.test(msg)){ showToast('请先填写 API Key'); openSettings(); return; }
+    // 智能自动 fallback：第一次失败且疑似 JSON 被截断（MiniMax M3 等推理模型的 think 块耗光 token）→ 自动用更强指令+少分镜重试一次
+    if(!opts.strict && /truncated|截断|未找到|找不到|被截断|找不到 JSON|解析失败|失败/i.test(msg)){
+      showToast('检测到 JSON 截断，自动用更强指令+少分镜重试（约 15-30 秒）…');
+      await sleep(500);
+      return generateVideoScript({strict:true});
+    }
     // 把模型原始输出贴到脚本区下方，方便用户诊断
     const list = $('#videoScriptList');
     if(list){
