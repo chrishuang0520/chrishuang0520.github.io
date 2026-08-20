@@ -2365,16 +2365,23 @@ function renderVideoFlowStatus(){
   box.style.display = '';
 }
 
-// 视频请求统一走 CORS 代理（MiniMax 视频 API 不支持浏览器直连）
-function videoFetch(url, options){
+// 视频请求统一走 CORS 代理（MiniMax 视频 API 不支持浏览器直连），内置重试
+async function videoFetch(url, options){
   const proxy = (state.aiConfig && state.aiConfig.videoProxy) ? state.aiConfig.videoProxy.trim() : '';
-  if(proxy){
-    const p = proxy.replace(/\/+$/,'');
-    // 参数式代理：?url=<目标URL>
-    const finalUrl = p + (p.includes('?') ? '&' : '?') + 'url=' + encodeURIComponent(url);
-    return fetch(finalUrl, options);
+  const realUrl = proxy
+    ? proxy.replace(/\/+$/,'') + (proxy.includes('?') ? '&' : '?') + 'url=' + encodeURIComponent(url)
+    : url;
+  // 网络抖动自动重试 3 次（Cloudflare Worker 冷启动/网络瞬断）
+  let lastErr;
+  for(let i=0; i<3; i++){
+    try{
+      return await fetch(realUrl, options);
+    }catch(e){
+      lastErr = e;
+      if(i < 2) await new Promise(r=>setTimeout(r, 1500));
+    }
   }
-  return fetch(url, options);
+  throw lastErr;
 }
 
 async function generateVideo(){
@@ -2439,9 +2446,24 @@ async function generateVideo(){
     const taskId = d.task_id || d.data?.task_id;
     if(!taskId){ throw new Error('未获取到任务 ID，请检查视频 Key 与接口地址'); }
     const deadline = Date.now() + 6*60*1000;
+    let pollCount = 0;
     while(Date.now() < deadline){
       await sleep(8000);
-      const q = await videoFetch(vBase + '/v2/query/video_generation/'+taskId, { headers:{'Authorization':'Bearer '+cfg.videoKey} });
+      pollCount++;
+      // 单次轮询内部也加 3 次重试（应对 Cloudflare 冷启动/瞬断）
+      let q;
+      for(let qi=0; qi<3; qi++){
+        try{
+          q = await videoFetch(vBase + '/v2/query/video_generation/'+taskId, { headers:{'Authorization':'Bearer '+cfg.videoKey} });
+          break;
+        }catch(e){
+          if(qi < 2) await new Promise(r=>setTimeout(r, 1500));
+        }
+      }
+      if(!q){
+        setStatus('视频生成中…（第 '+pollCount+' 次轮询网络抖动，自动跳过）');
+        continue;
+      }
       const qd = await q.json().catch(()=>({}));
       const body = qd.data || qd;
       const st = String(body.status || '').toLowerCase();
@@ -2456,18 +2478,21 @@ async function generateVideo(){
       if(st==='failed' || st==='error' || st==='cancelled' || st==='expired'){
         throw new Error('视频生成失败（'+st+'）');
       }
-      setStatus('视频生成中…'+(st==='queued'?'排队中':st==='running'?'渲染中':st)+'，一般需 30~90 秒');
+      setStatus('视频生成中…第 '+pollCount+' 次查询（'+st+'），一般需 30~90 秒');
     }
     throw new Error('生成超时，请稍后重试');
   }catch(e){
     let msg = e.message || '生成失败';
-    if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败：无法访问 '+vBase+'。<br>常见原因：<br>1) 浏览器拦截了 CORS 跨域（打开浏览器 Network 标签看具体状态）<br>2) 当前网络无法访问 MiniMax 视频接口（api.minimaxi.com）<br>3) 视频接口地址（齿轮→视频生成→接口地址）填错了<br>4) 视频 Key 无效或未开通视频生成权限（需 MiniMax Coding Plan 订阅）';
+    if(/Failed to fetch|NetworkError|fetch/i.test(msg)){
+      const via = cfg.videoProxy ? '通过代理' : '直连（未配代理）';
+      msg = '网络抖动：' + via + ' 视频 API 重试 3 次仍失败。<br>建议：<br>1) 等 30 秒再点一次（Cloudflare Worker 冷启动可能临时失败）<br>2) 浏览器打开 <code>'+ (cfg.videoProxy||vBase) +'</code> 看是否还在线<br>3) 视频 Key 是否有效（齿轮 → 检测视频 Key）';
+    }
     if(/1004|authorization|unauthorized|invalid api key|authentication|401|403|login fail/i.test(msg)){
       msg = '视频 API Key 无效或缺失 — 点右上角齿轮，检查「视频 API Key」是否正确';
     }
     // 时长/分辨率不支持的典型报错
     if(/duration|resolution|invalid param|参数/i.test(msg)){
-      msg += '。<br><b>提示：</b>如果选择了 30/45/60 秒时长，MiniMax H3 可能不支持（常见支持 5-10 秒），请改用 10 或 15 秒重试';
+      msg += '。<br><b>提示：</b>MiniMax-H3 只支持 5/10/15 秒，请改用 10 或 15 秒重试';
     }
     $('#aiOutBody').innerHTML = `<div class="empty" style="color:var(--danger);padding:24px 20px">视频生成失败：${esc(msg)}<div style="margin-top:12px"><button class="btn btn-sm" onclick="testVideoKey()" style="margin-right:6px">🔍 检测视频 Key</button><button class="btn btn-sm" onclick="openSettings()">⚙ 打开设置</button></div></div>`;
   }finally{
