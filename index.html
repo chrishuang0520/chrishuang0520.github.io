@@ -496,13 +496,8 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
               <label>时长（秒）</label>
               <select class="input" id="videoDuration">
                 <option>5</option>
-                <option>8</option>
-                <option>10</option>
+                <option selected>10</option>
                 <option>15</option>
-                <option>20</option>
-                <option selected>30</option>
-                <option>45</option>
-                <option>60</option>
               </select>
             </div>
           </div>
@@ -675,7 +670,7 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
     </div>
     <div class="field">
       <label>视频接口地址</label>
-      <input class="input" id="cfgVideoBase" placeholder="https://api.minimax.io">
+      <input class="input" id="cfgVideoBase" placeholder="https://api.minimaxi.com">
     </div>
     <div class="field">
       <label>视频模型</label>
@@ -918,12 +913,12 @@ const WEEK=['日','一','二','三','四','五','六'];
 function wkStr(s){ return '周'+WEEK[parseDate(s).getDay()] }
 
 /* ================= 数据层 ================= */
-let state = { ideas:[], schedules:[], metrics:[], aiConfig:{provider:'deepseek',accounts:{},videoKey:'',videoBaseUrl:'https://api.minimax.io',videoModel:'MiniMax-H3'}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'} };
+let state = { ideas:[], schedules:[], metrics:[], aiConfig:{provider:'deepseek',accounts:{},videoKey:'',videoBaseUrl:'https://api.minimaxi.com',videoModel:'MiniMax-H3'}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'} };
 
 function load(){
   try{
     const raw = localStorage.getItem(LS);
-    if(raw){ const d = JSON.parse(raw); state = Object.assign({aiConfig:{provider:'deepseek',accounts:{},videoKey:'',videoBaseUrl:'https://api.minimax.io',videoModel:'MiniMax-H3'}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'}}, d); }
+    if(raw){ const d = JSON.parse(raw); state = Object.assign({aiConfig:{provider:'deepseek',accounts:{},videoKey:'',videoBaseUrl:'https://api.minimaxi.com',videoModel:'MiniMax-H3'}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'}}, d); }
   }catch(e){ console.warn('load fail', e) }
   const c = state.aiConfig || {};
   if(!c.accounts) c.accounts = {};
@@ -937,7 +932,7 @@ function load(){
     delete c.apiKey; delete c.baseUrl; delete c.model;
   }
   PROVIDERS.forEach(p=>{ if(!c.accounts[p.key]) c.accounts[p.key] = {}; });
-  if(!c.videoBaseUrl) c.videoBaseUrl = 'https://api.minimax.io';
+  if(!c.videoBaseUrl) c.videoBaseUrl = 'https://api.minimaxi.com';
   if(!c.videoModel) c.videoModel = 'MiniMax-H3';
   // 兼容旧版 mediaKey：只迁移到视频/图像 Key 全都为空的情况（一次性）
   if(c.mediaKey && !c.videoKey){ c.videoKey = c.mediaKey; }
@@ -2400,7 +2395,7 @@ async function generateVideo(){
   const ratio = $('#videoRatio').value;
   const duration = +$('#videoDuration').value;
   const resolution = $('#videoRes').value;
-  const vBase = (cfg.videoBaseUrl||'https://api.minimax.io').replace(/\/+$/,'');
+  const vBase = (cfg.videoBaseUrl||'https://api.minimaxi.com').replace(/\/+$/,'');
   const btn = $('#aiGenBtn');
   btn.disabled = true;
   $('#aiBatchImgBtn').style.display='none';
@@ -2440,7 +2435,7 @@ async function generateVideo(){
     throw new Error('生成超时，请稍后重试');
   }catch(e){
     let msg = e.message || '生成失败';
-    if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败：无法访问 '+vBase+'。<br>常见原因：<br>1) 浏览器拦截了 CORS 跨域（打开浏览器 Network 标签看具体状态）<br>2) 当前网络无法访问 MiniMax 视频接口（api.minimax.io）<br>3) 视频接口地址（齿轮→视频生成→接口地址）填错了<br>4) 视频 Key 无效或未开通视频生成权限（需 MiniMax Coding Plan 订阅）';
+    if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败：无法访问 '+vBase+'。<br>常见原因：<br>1) 浏览器拦截了 CORS 跨域（打开浏览器 Network 标签看具体状态）<br>2) 当前网络无法访问 MiniMax 视频接口（api.minimaxi.com）<br>3) 视频接口地址（齿轮→视频生成→接口地址）填错了<br>4) 视频 Key 无效或未开通视频生成权限（需 MiniMax Coding Plan 订阅）';
     if(/1004|authorization|unauthorized|invalid api key|authentication|401|403|login fail/i.test(msg)){
       msg = '视频 API Key 无效或缺失 — 点右上角齿轮，检查「视频 API Key」是否正确';
     }
@@ -3180,7 +3175,7 @@ async function testImageKey(){
 }
 async function testVideoKey(){
   const apiKey = $('#cfgVideoKey').value.trim();
-  const base = ($('#cfgVideoBase').value.trim() || 'https://api.minimax.io').replace(/\/+$/,'');
+  const base = ($('#cfgVideoBase').value.trim() || 'https://api.minimaxi.com').replace(/\/+$/,'');
   const model = $('#cfgVideoModel').value.trim() || 'MiniMax-H3';
   if(!apiKey){ showToast('请先填写视频 API Key'); return; }
   showToast('正在检测视频 Key…');
@@ -3274,7 +3269,7 @@ function saveSettings(){
   });
   state.aiConfig.provider = key;
   state.aiConfig.videoKey = $('#cfgVideoKey').value.trim();
-  state.aiConfig.videoBaseUrl = ($('#cfgVideoBase').value.trim()||'https://api.minimax.io');
+  state.aiConfig.videoBaseUrl = ($('#cfgVideoBase').value.trim()||'https://api.minimaxi.com');
   state.aiConfig.videoModel = ($('#cfgVideoModel').value.trim()||'MiniMax-H3');
   // 图像生成配置
   state.aiConfig.image = {
