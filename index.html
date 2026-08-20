@@ -932,7 +932,9 @@ function load(){
     delete c.apiKey; delete c.baseUrl; delete c.model;
   }
   PROVIDERS.forEach(p=>{ if(!c.accounts[p.key]) c.accounts[p.key] = {}; });
-  if(!c.videoBaseUrl) c.videoBaseUrl = 'https://api.minimaxi.com';
+  if(!c.videoBaseUrl || c.videoBaseUrl.indexOf('api.minimax.')>-1){
+    c.videoBaseUrl = 'https://api.minimaxi.com';
+  }
   if(!c.videoModel) c.videoModel = 'MiniMax-H3';
   // 兼容旧版 mediaKey：只迁移到视频/图像 Key 全都为空的情况（一次性）
   if(c.mediaKey && !c.videoKey){ c.videoKey = c.mediaKey; }
