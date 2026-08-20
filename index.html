@@ -1769,21 +1769,26 @@ async function generateVideoScript(opts){
   const prov = PROVIDERS.find(p=>p.key===state.aiConfig.provider) || PROVIDERS[0];
   if(!curAccount().apiKey){ showToast('请先在 AI 设置里填写 '+prov.name+' 的 API Key'); openSettings(); return; }
   const duration = +$('#videoDuration').value || 10;
-  const sceneCount = Math.max(3, Math.min(8, Math.round(duration / 4)));
+  // strict 模式（推理模型易超时）自动减少分镜数 + 扩 maxTokens，避免 think 块耗光 token 导致 JSON 截断
+  const isStrict = !!opts.strict;
+  const sceneCount = isStrict
+    ? Math.max(3, Math.min(5, Math.round(duration / 6)))
+    : Math.max(3, Math.min(8, Math.round(duration / 4)));
+  const maxTokens = isStrict ? 6000 : 4000;
   const btn = $('#videoScriptBtn');
   const oldHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px"></span>生成中…';
   showToast('AI 正在分镜（约 10-20 秒）…');
   const strictHint = opts.strict
-    ? '\n\n【硬性要求·再次强调】\n1) 最外层必须是 JSON 数组 [ ]，不能是 { } 对象\n2) **绝对不要复述我的要求**、不要列计划、不要"下面是 JSON"等前言\n3) 思考可以放 <think></think> 里，但 JSON 数组外禁止任何字符\n4) 直接以 [ 字符开头输出，不要换行或空格先'
+    ? '\n\n【硬性要求·再次强调·防截断】\n1) 本次只要 ' + sceneCount + ' 个分镜即可（不要更多），JSON 体积必须小\n2) 最外层必须是 JSON 数组 [...]，不能是 {...} 对象\n3) **绝对不要复述我的要求**、不要列计划、不要"下面是 JSON"等前言\n4) 字段精简：scene ≤15字、narration≤20字、prompt ≤15字（英文，省 token）\n5) think 后直接以 [ 字符开头（不要换行/空格/代码块/前言），以 ] 字符结尾\n6) 整体输出字符控制在 1500 以内（确保不被截断）'
     : '\n\n只输出 \`\`\`json 代码块，禁止任何其他文字。';
   try{
     const messages = [
       {role:'system', content:'你是生物医药短视频分镜师。擅长把创意拆成时间轴清晰、镜头明确的分镜脚本，输出严格 JSON 数组。'},
       {role:'user', content:`完善创意：${polished}\n视频总时长：${duration}秒\n\n请拆成 ${sceneCount} 个分镜（首尾相接覆盖总时长），输出严格 JSON 数组，字段说明：\n[\n  {\n    "timeStart": "00:00",\n    "timeEnd": "00:03",\n    "scene": "本镜画面描述（10-30字）",\n    "narration": "本镜旁白（口播一句，15-30字，通俗有节奏）",\n    "prompt": "本镜给 AI 视频模型的英文 prompt（10-25字，含主体+运镜+风格）"\n  }\n]\n\n最外层必须是数组 [ ]，不是对象 { }。${strictHint}`}
     ];
-    const text = await callLLM(messages, {maxTokens: 4000, temperature: 0.8, useJsonFormat: true});
+    const text = await callLLM(messages, {maxTokens, temperature: 0.8, useJsonFormat: true});
     if(!text) throw new Error('返回内容为空');
     _lastScriptRaw = text; // 失败时给用户看原始输出
     const data = parseScriptJSON(text);
