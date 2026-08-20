@@ -676,9 +676,15 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
       <label>视频模型</label>
       <input class="input" id="cfgVideoModel" placeholder="MiniMax-H3">
     </div>
+    <div class="field">
+      <label>视频 CORS 代理地址（必填，解决浏览器跨域拦截）</label>
+      <input class="input" id="cfgVideoProxy" placeholder="https://你的代理.workers.dev/?url=">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.6">MiniMax 视频 API 不允许浏览器直接调用（CORS 403），必须通过代理转发。见下方说明。</div>
+    </div>
     <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:6px" onclick="testVideoKey()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>检测视频 Key 是否有效
     </button>
+    <div style="font-size:11px;color:var(--muted);background:var(--bg);border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.7">💡 <b>为什么视频要代理？</b><br>MiniMax 的文本/图像 API 支持浏览器跨域，但<b>视频生成 API 返回 403 且不带 CORS 头</b>，纯网页无法直连。需要搭一个免费代理（推荐 Cloudflare Workers，约 3 分钟），把地址填到上方即可。</div>
     <div style="border-top:1px solid var(--border);margin:16px 0 2px;padding-top:14px;font-size:13px;font-weight:700;color:var(--primary)">图像生成（公众号配图）</div>
     <p class="section-tip" style="font-size:12px;color:var(--muted);margin:6px 0 10px">⭐ 推荐 <b>MiniMax image-01</b>（便宜·质量好·可复用 MiniMax 订阅/Coding Plan Key）。也支持 OpenAI 兼容 /images/generations（OpenAI、智谱、通义万相等）。</p>
     <div class="field" style="margin-top:10px">
@@ -913,12 +919,12 @@ const WEEK=['日','一','二','三','四','五','六'];
 function wkStr(s){ return '周'+WEEK[parseDate(s).getDay()] }
 
 /* ================= 数据层 ================= */
-let state = { ideas:[], schedules:[], metrics:[], aiConfig:{provider:'deepseek',accounts:{},videoKey:'',videoBaseUrl:'https://api.minimaxi.com',videoModel:'MiniMax-H3'}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'} };
+let state = { ideas:[], schedules:[], metrics:[], aiConfig:{provider:'deepseek',accounts:{},videoKey:'',videoBaseUrl:'https://api.minimaxi.com',videoModel:'MiniMax-H3',videoProxy:''}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'} };
 
 function load(){
   try{
     const raw = localStorage.getItem(LS);
-    if(raw){ const d = JSON.parse(raw); state = Object.assign({aiConfig:{provider:'deepseek',accounts:{},videoKey:'',videoBaseUrl:'https://api.minimaxi.com',videoModel:'MiniMax-H3'}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'}}, d); }
+    if(raw){ const d = JSON.parse(raw); state = Object.assign({aiConfig:{provider:'deepseek',accounts:{},videoKey:'',videoBaseUrl:'https://api.minimaxi.com',videoModel:'MiniMax-H3',videoProxy:''}, sync:{enabled:false, token:'', owner:'chrishuang0520', repo:'bio-creator-data'}}, d); }
   }catch(e){ console.warn('load fail', e) }
   const c = state.aiConfig || {};
   if(!c.accounts) c.accounts = {};
@@ -2359,6 +2365,18 @@ function renderVideoFlowStatus(){
   box.style.display = '';
 }
 
+// 视频请求统一走 CORS 代理（MiniMax 视频 API 不支持浏览器直连）
+function videoFetch(url, options){
+  const proxy = (state.aiConfig && state.aiConfig.videoProxy) ? state.aiConfig.videoProxy.trim() : '';
+  if(proxy){
+    const p = proxy.replace(/\/+$/,'');
+    // 参数式代理：?url=<目标URL>
+    const finalUrl = p + (p.includes('?') ? '&' : '?') + 'url=' + encodeURIComponent(url);
+    return fetch(finalUrl, options);
+  }
+  return fetch(url, options);
+}
+
 async function generateVideo(){
   const cfg = state.aiConfig;
   // 渲染流程进度提示（让用户随时看到缺哪步）
@@ -2373,6 +2391,12 @@ async function generateVideo(){
     showToast(msg);
   };
   if(!cfg.videoKey){ showErr('请先填写「视频 API Key」', '点右上角 ⚙ 齿轮 → 「视频 API Key」一栏填写（与文本/图像 Key 不同，通常需要 MiniMax 订阅/Coding Plan 专用 Key）'); openSettings(); return; }
+  // 视频 API 不支持浏览器直连（CORS 403），必须有代理
+  if(!cfg.videoProxy){
+    showErr('请先配置「视频 CORS 代理」', 'MiniMax 视频生成 API 不允许浏览器直接调用（跨域被拦截），必须通过代理转发。<br><br>点右上角 ⚙ 齿轮 → 视频生成 → 「视频 CORS 代理地址」一栏填写代理地址。<br>没有代理？点击下方按钮查看 3 分钟免费搭建教程。');
+    $('#aiOutBody').insertAdjacentHTML('beforeend', '<div style="margin-top:12px"><button class="btn btn-sm" onclick="showProxyGuide()">📖 查看代理搭建教程</button></div>');
+    openSettings(); return;
+  }
   // 视频生成提示词优先级：脚本整合 > 完善后创意 > 原始想法
   let prompt = '';
   if(videoScriptData.length){
@@ -2405,7 +2429,7 @@ async function generateVideo(){
   const setStatus = s=>{ $('#aiOutBody').innerHTML = '<div class="ai-loading"><span class="spinner"></span>'+s+'</div>'; };
   try{
     setStatus('正在提交视频生成任务…');
-    const res = await fetch(vBase + '/v2/video_generation', {
+    const res = await videoFetch(vBase + '/v2/video_generation', {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+cfg.videoKey },
       body: JSON.stringify({ model: cfg.videoModel||'MiniMax-H3', content:[{type:'text', text: prompt}], resolution, duration, ratio })
@@ -2417,7 +2441,7 @@ async function generateVideo(){
     const deadline = Date.now() + 6*60*1000;
     while(Date.now() < deadline){
       await sleep(8000);
-      const q = await fetch(vBase + '/v2/query/video_generation/'+taskId, { headers:{'Authorization':'Bearer '+cfg.videoKey} });
+      const q = await videoFetch(vBase + '/v2/query/video_generation/'+taskId, { headers:{'Authorization':'Bearer '+cfg.videoKey} });
       const qd = await q.json().catch(()=>({}));
       const body = qd.data || qd;
       const st = String(body.status || '').toLowerCase();
@@ -3088,7 +3112,7 @@ function openSettings(){
   const acct = curAccount();
   $('#cfgKey').value = acct.apiKey; $('#cfgBase').value = acct.baseUrl;
   fillCfgModelSelect(acct.model);
-  $('#cfgVideoKey').value = c.videoKey||''; $('#cfgVideoBase').value = c.videoBaseUrl||''; $('#cfgVideoModel').value = c.videoModel||'';
+  $('#cfgVideoKey').value = c.videoKey||''; $('#cfgVideoBase').value = c.videoBaseUrl||''; $('#cfgVideoModel').value = c.videoModel||''; $('#cfgVideoProxy').value = c.videoProxy||'';
   // 图像生成配置
   const img = c.image || {provider:'minimax_img',apiKey:'',baseUrl:'https://api.minimaxi.com/v1',model:'image-01'};
   formImageProvider = img.provider;
@@ -3178,26 +3202,66 @@ async function testImageKey(){
 async function testVideoKey(){
   const apiKey = $('#cfgVideoKey').value.trim();
   const base = ($('#cfgVideoBase').value.trim() || 'https://api.minimaxi.com').replace(/\/+$/,'');
-  const model = $('#cfgVideoModel').value.trim() || 'MiniMax-H3';
+  const proxy = $('#cfgVideoProxy').value.trim();
   if(!apiKey){ showToast('请先填写视频 API Key'); return; }
-  showToast('正在检测视频 Key…');
+  if(!proxy){ showToast('⚠ 请先填写「视频 CORS 代理地址」（MiniMax 视频 API 需代理才能调用）'); return; }
+  showToast('正在检测视频 Key + 代理…');
   try{
     // 用一个无效 task_id 去 query，如果 Key 错会返 401/403；网络错会抛 Failed to fetch
     const probeId = 'probe_' + Date.now();
-    const res = await fetch(base + '/v2/query/video_generation/' + probeId, {
-      method:'GET',
-      headers:{ 'Authorization':'Bearer '+apiKey }
-    });
+    // 临时用代理发起探测
+    const p = proxy.replace(/\/+$/,'');
+    const probeUrl = p + (p.includes('?') ? '&' : '?') + 'url=' + encodeURIComponent(base + '/v2/query/video_generation/' + probeId);
+    const res = await fetch(probeUrl, { method:'GET', headers:{ 'Authorization':'Bearer '+apiKey } });
     const d = await res.json().catch(()=>({}));
-    // 任意 HTTP 状态（非网络错误）都说明连通 + Key 有效（即使是 401/404/200 都算"链路通"）
-    showToast('✅ 视频接口可达（HTTP '+res.status+'），Key 可用');
+    // 任意 HTTP 状态（非网络错误）都说明连通 + 代理可用
+    showToast('✅ 视频链路可达（HTTP '+res.status+'），代理+Key 可用');
   }catch(e){
     let msg = e.message || '检测失败';
     if(/Failed to fetch|fetch|NetworkError/i.test(msg)){
-      msg = '网络失败：无法访问 '+base + '。可能原因：①浏览器拦截 CORS ②当前网络无法访问 MiniMax 视频接口 ③接口地址填错';
+      msg = '网络失败：代理地址无法访问或代理未正确转发。请确认代理已部署且地址正确（末尾可带或不带 ?url=）';
     }
     showToast('❌ '+msg);
   }
+}
+// 代理搭建教程
+function showProxyGuide(){
+  const guide = `<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;max-height:70vh;overflow:auto;font-size:13px;line-height:1.8">
+    <div style="font-weight:700;font-size:15px;margin-bottom:10px">📖 3 分钟搭一个免费视频代理（Cloudflare Workers）</div>
+    <div style="color:var(--muted)">为什么需要？MiniMax 视频 API 返回 403 且不带 CORS 头，浏览器无法直连；文本/图像 API 则正常。</div>
+    <ol style="padding-left:20px;margin:10px 0">
+      <li>打开 <b>dash.cloudflare.com</b> → 登录（免费）→ 左侧「Workers & Pages」→「创建」→「创建 Worker」</li>
+      <li>给 Worker 起个名（如 cors-proxy）→ 点「部署」</li>
+      <li>点「编辑代码」，把下面这段代码<b>全部替换</b>进去，点「部署」：</li>
+    </ol>
+    <pre style="background:#0d1117;color:#e6edf3;padding:12px;border-radius:8px;overflow:auto;font-size:12px;line-height:1.5">export default {
+  async fetch(request) {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+        'Access-Control-Allow-Headers': '*'
+      }});
+    }
+    const url = new URL(request.url);
+    const target = url.searchParams.get('url');
+    if (!target) return new Response('missing url', { status: 400 });
+    const headers = new Headers(request.headers);
+    headers.delete('origin');
+    const resp = await fetch(target, { method: request.method, headers, body: request.body });
+    const rh = new Headers(resp.headers);
+    rh.set('Access-Control-Allow-Origin', '*');
+    return new Response(resp.body, { status: resp.status, headers: rh });
+  }
+}</pre>
+    <ol start="4" style="padding-left:20px;margin:10px 0">
+      <li>部署后你会得到一个地址，形如 <code>https://cors-proxy.你的账号.workers.dev</code></li>
+      <li>回到工作台 → 齿轮 → 视频生成 →「视频 CORS 代理地址」填入：<code>https://cors-proxy.你的账号.workers.dev/?url=</code></li>
+      <li>保存后点「检测视频 Key」验证，显示绿色 ✅ 即成功</li>
+    </ol>
+    <div style="color:var(--warning);font-size:12px">⚠ 安全提示：这个代理会把请求转发给 MiniMax（含你的 Key）。请确保只有你自己使用这个 Worker 地址，不要公开分享。</div>
+  </div>`;
+  $('#aiOutBody').innerHTML = guide;
 }
 // 一键按当前提供商刷新接口地址和模型（兜底修复 baseUrl 残留）
 function resetImageCfg(){
@@ -3273,6 +3337,7 @@ function saveSettings(){
   state.aiConfig.videoKey = $('#cfgVideoKey').value.trim();
   state.aiConfig.videoBaseUrl = ($('#cfgVideoBase').value.trim()||'https://api.minimaxi.com');
   state.aiConfig.videoModel = ($('#cfgVideoModel').value.trim()||'MiniMax-H3');
+  state.aiConfig.videoProxy = $('#cfgVideoProxy').value.trim();
   // 图像生成配置
   state.aiConfig.image = {
     provider: $('#cfgImgProvider').value,
