@@ -1445,9 +1445,14 @@ async function fetchGoogleNewsRSS(query, category){
   return parseRSS(xml, category);
 }
 // 抓 PubMed 近 7 天顶刊肿瘤药物（热点雷达版，简化）
-async function fetchPubMedHot(){
-  const topic = '(cancer[tiab] OR tumor[tiab] OR oncology[tiab]) AND (drug[tiab] OR therapy[tiab] OR immunotherapy[tiab] OR antibody[tiab] OR "clinical trial"[tiab])';
-  const journals = '"Nature"[Journal] OR "Science"[Journal] OR "Cell"[Journal] OR "N Engl J Med"[Journal] OR "Lancet"[Journal] OR "Nat Med"[Journal]';
+async function fetchPubMedHot(category){
+  // 分类关键词：研发聚焦机制/技术/早期发现，临床聚焦试验/疗效/生存期/监管
+  const topicByCat = {
+    '研发': '(cancer[tiab] OR tumor[tiab] OR oncology[tiab]) AND (mechanism[tiab] OR discovery[tiab] OR pathway[tiab] OR target[tiab] OR inhibitor[tiab] OR antibody[tiab] OR "CAR-T"[tiab] OR ADC[tiab] OR immunotherapy[tiab] OR gene[tiab] OR mutation[tiab] OR biomarker[tiab] OR mRNA[tiab] OR CRISPR[tiab]) NOT ("clinical trial"[Publication Type] OR "randomized controlled trial"[Publication Type])',
+    '临床': '(cancer[tiab] OR tumor[tiab] OR oncology[tiab]) AND ("clinical trial"[tiab] OR "phase 2"[tiab] OR "phase 3"[tiab] OR "phase II"[tiab] OR "phase III"[tiab] OR "overall survival"[tiab] OR "progression-free survival"[tiab] OR efficacy[tiab] OR patients[tiab] OR endpoint[tiab] OR approval[tiab] OR FDA[tiab] OR NMPA[tiab] OR "first-line"[tiab])'
+  };
+  const topic = topicByCat[category] || '(cancer[tiab] OR tumor[tiab] OR oncology[tiab]) AND (drug[tiab] OR therapy[tiab] OR treatment[tiab])';
+  const journals = '"Nature"[Journal] OR "Science"[Journal] OR "Cell"[Journal] OR "N Engl J Med"[Journal] OR "Lancet"[Journal] OR "Nat Med"[Journal] OR "Nature Medicine"[Journal]';
   const end = new Date();
   const start = addDays(end, -7);
   const url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=' +
@@ -1468,8 +1473,8 @@ async function fetchPubMedHot(){
         title: (r.title || '').replace(/\.$/,''),
         link: 'https://pubmed.ncbi.nlm.nih.gov/' + id + '/',
         pubDate: r.pubdate || '',
-        source: (r.source || 'PubMed'),
-        category: '研发'
+        source: (r.source || 'PubMed') + ' · 顶刊',
+        category: category || '研发'
       };
     }).filter(x=>x.title);
   }catch(e){ return []; }
@@ -1518,12 +1523,14 @@ async function fetchHotTopics(force){
   if(list) list.innerHTML = '<div class="paper-empty">正在抓取本周热点（Google News 研发/临床/证券 + PubMed 顶刊，约 5-15 秒）…<br><span class="spinner" style="margin:12px auto"></span></div>';
   try{
     // 并行抓 5 路：Google News × 4 + PubMed × 1
+    // 数据源策略：研发 3 + 临床 3 全部从 PubMed 顶刊来（专业、真实、可追溯）
+    //            证券 3 + 其他 1 从 Google News 来（市场资讯）
     const [rd, cl, sec, gen, pm] = await Promise.all([
-      fetchGoogleNewsRSS('医药 新药 研发', '研发'),
-      fetchGoogleNewsRSS('临床试验 肿瘤 患者', '临床'),
+      fetchPubMedHot('研发'),
+      fetchPubMedHot('临床'),
       fetchGoogleNewsRSS('医药股 生物科技 股市', '证券'),
       fetchGoogleNewsRSS('生物医药 政策 审批', '其他'),
-      fetchPubMedHot()
+      fetchPubMedHot('研发') // 备用池，与 rd 一同做补足
     ]);
     let raw = [].concat(rd, cl, sec, gen, pm);
     if(!raw.length) throw new Error('所有数据源都抓取失败（网络/代理问题）');
@@ -1534,9 +1541,9 @@ async function fetchHotTopics(force){
     let items = [];
     if(curAccount().apiKey){
       try{
-        const feed = raw.slice(0, 45).map((x,i)=>`[${i}] (${x.category}) ${x.title} | ${x.source}`).join('\n');
-        const sys = '你是生物医药行业分析师兼内容策划，擅长从新闻流中挑选最有科普创作价值的话题。只输出 JSON。';
-        const user = `下面是本周从 Google News 和 PubMed 抓到的医药热点条目（带分类标签）：\n${feed}\n\n请精选出 10 个最有内容创作价值的话题。【数量硬性要求】恰好：3 个研发 + 3 个临床 + 3 个证券 + 1 个其他，共 10 个不多不少：\n- 研发（新药/技术平台/管线交易）恰好 3 个\n- 临床（试验数据/审批/监管）恰好 3 个\n- 证券（股价/融资/并购/IPO）恰好 3 个\n- 其他（政策/人物/行业事件）恰好 1 个\n每个话题输出 JSON：{"idx": 原条目序号, "title": "20字内中文标题", "summary": "60-90字梗概（这件事是什么+为什么值得写+对大众/患者的看点）", "category": "研发|临床|证券|其他"}\n优先选：中国相关、肿瘤领域、数据明确、大众关心的话题\n只输出一个 JSON 数组（恰好10个对象），禁止其他文字`;
+        const feed = raw.slice(0, 50).map((x,i)=>`[${i}] (${x.category}|${x.source}) ${x.title}`).join('\n');
+        const sys = '你是生物医药行业分析师兼内容策划，擅长从专业论文和市场新闻中挑选最有科普创作价值的话题。只输出 JSON。';
+        const user = `下面是本周从 PubMed 顶刊（Nature/Science/Cell/NEJM/Lancet/Nat Med 近 7 天肿瘤药物论文）和 Google News 抓到的热点条目（带分类标签和来源）：\n${feed}\n\n请精选出 10 个最有内容创作价值的话题。【数量硬性要求】恰好：3 个研发 + 3 个临床 + 3 个证券 + 1 个其他，共 10 个不多不少：\n- 研发（机制/技术/靶点/早期发现，来源多为 PubMed 顶刊）恰好 3 个\n- 临床（试验数据/疗效/生存期/审批，来源多为 PubMed 顶刊）恰好 3 个\n- 证券（股价/融资/并购/IPO，来源多为 Google News 财经）恰好 3 个\n- 其他（政策/人物/行业事件）恰好 1 个\n每个话题输出 JSON：{"idx": 原条目序号, "title": "20字内中文标题", "summary": "60-90字梗概（这件事是什么+为什么值得写+对大众/患者的看点）", "category": "研发|临床|证券|其他"}\n重要：\n- 研发/临床条目原则上只用 PubMed 顶刊来源；证券条目用 Google News 财经来源\n- 优先选：肿瘤领域、数据明确、大众关心的话题\n- 剔除仅含"股价行情""研报数据"等纯财经的伪研发条目\n只输出一个 JSON 数组（恰好10个对象），禁止其他文字`;
         const text = await callLLM([{role:'system',content:sys},{role:'user',content:user}], {maxTokens: 3000, temperature: 0.6, useJsonFormat: true});
         const picked = parseScriptJSON(text);
         if(Array.isArray(picked) && picked.length){
