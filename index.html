@@ -1765,22 +1765,23 @@ async function generateVideoScript(opts){
   btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px"></span>生成中…';
   showToast('AI 正在分镜（约 10-20 秒）…');
   const strictHint = opts.strict
-    ? '\n\n【硬性要求】你只能输出一个 JSON 数组（最外层必须是 [ ]，不是 { }）。如果思考必须放在 <think></think> 里，但数组外禁止任何 markdown/前言/解释/代码块外的文字。'
+    ? '\n\n【硬性要求·再次强调】\n1) 最外层必须是 JSON 数组 [ ]，不能是 { } 对象\n2) **绝对不要复述我的要求**、不要列计划、不要"下面是 JSON"等前言\n3) 思考可以放 <think></think> 里，但 JSON 数组外禁止任何字符\n4) 直接以 [ 字符开头输出，不要换行或空格先'
     : '\n\n只输出 \`\`\`json 代码块，禁止任何其他文字。';
   try{
     const messages = [
       {role:'system', content:'你是生物医药短视频分镜师。擅长把创意拆成时间轴清晰、镜头明确的分镜脚本，输出严格 JSON 数组。'},
       {role:'user', content:`完善创意：${polished}\n视频总时长：${duration}秒\n\n请拆成 ${sceneCount} 个分镜（首尾相接覆盖总时长），输出严格 JSON 数组，字段说明：\n[\n  {\n    "timeStart": "00:00",\n    "timeEnd": "00:03",\n    "scene": "本镜画面描述（10-30字）",\n    "narration": "本镜旁白（口播一句，15-30字，通俗有节奏）",\n    "prompt": "本镜给 AI 视频模型的英文 prompt（10-25字，含主体+运镜+风格）"\n  }\n]\n\n最外层必须是数组 [ ]，不是对象 { }。${strictHint}`}
     ];
-    const text = await callLLM(messages, {maxTokens: 1500, temperature: 0.8, useJsonFormat: true});
+    const text = await callLLM(messages, {maxTokens: 4000, temperature: 0.8, useJsonFormat: true});
     if(!text) throw new Error('返回内容为空');
     _lastScriptRaw = text; // 失败时给用户看原始输出
     const data = parseScriptJSON(text);
+    if(data && !Array.isArray(data) && data.scenes) {} // 已是 scenes 数组
     let scenes = null;
     if(Array.isArray(data)) scenes = data;
     else if(data && Array.isArray(data.scenes)) scenes = data.scenes;
     else if(data && Array.isArray(data.shots)) scenes = data.shots;
-    if(!scenes) throw new Error('未解析出分镜数组');
+    if(!scenes) throw new Error(_detectTruncation(text));
     if(!scenes.length) throw new Error('分镜数组为空');
     // 时间戳校正
     let cursor = 0;
@@ -1818,7 +1819,33 @@ async function generateVideoScript(opts){
     btn.innerHTML = oldHtml;
   }
 }
-// 鲁棒的分镜 JSON 解析：
+// 检测 JSON 是否被截断
+function _detectTruncation(text){
+  if(!text) return '返回内容为空';
+  const trimmed = text.trim();
+  if(!trimmed) return '返回内容为空';
+  // 末尾是 JSON 中间符号 → 显然被截断（max_tokens 不足）
+  // 包括 `:` `,` `"` `[` `{` （正常 JSON 应以 `]` `}` 或 ``` 结束）
+  const last = trimmed[trimmed.length-1];
+  if(last === ':' || last === ',' || last === '"' || last === '[' || last === '{'){
+    return 'JSON 看起来被截断（max_tokens 不足，模型输出在生成过程中被切断）。请换更长的模型（如 GPT-4o / Claude Sonnet / DeepSeek-V3），或缩短视频时长（少分几镜）。';
+  }
+  // 代码块未闭合
+  if(/```\s*$/.test(trimmed) && !/```\s*[\]\}]/.test(trimmed) && !/\]\s*```/.test(trimmed) && !/\}\s*```/.test(trimmed)){
+    return 'JSON 代码块未完整闭合（被截断）。请换更长的模型或缩短视频时长（少分几镜）。';
+  }
+  // 包含 [ 或 { 但末尾不是 ] } 或 ``` → JSON 内部被截断（值在生成中被打断）
+  if(/[\[\{]/.test(trimmed) && !/[\]\}]\s*$/.test(trimmed) && !/```\s*$/.test(trimmed)){
+    return 'JSON 可能被截断（max_tokens 不足，模型在生成 JSON 内部值时被打断）。请换更长的模型（如 GPT-4o / Claude Sonnet / DeepSeek-V3），或缩短视频时长（少分几镜）。';
+  }
+  // 完全没有 JSON 特征
+  if(!/[\[\{]/.test(trimmed)){
+    return '模型输出中找不到 JSON 数组或对象。可能只输出了思考文字（"复述我的要求"等），请点"用更强指令重试"';
+  }
+  return '未解析出分镜数组';
+}
+
+
 // 1) 剥 <think> 块
 // 2) 尝试整体 JSON
 // 3) 尝试 ```json ... ``` 代码块
