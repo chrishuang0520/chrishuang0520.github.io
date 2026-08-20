@@ -1584,7 +1584,7 @@ function buildPrompt(){
       + '\n写作要求：\n1) 用通俗易懂的语言写给普通大众（无医学背景），专业术语必须用生活化比喻解释；\n2) 必须包含对普通人和病人的意义解读：这项研究对普通人意味着什么、对病人（患者及家属）带来了哪些新的治疗可能性（哪些患者可能获益、新药/新疗法相比现有治疗强在哪、离真正能用还有多远、当前局限性）；\n3) 所有数据、结论必须严格来自参考资料原文，不得编造；疗效表述不得夸大。\n参考资料如下：\n' + refMat.text + '\n（参考资料结束）';
   }
 
-  const articleStrictRule = '【硬性输出格式】你只能输出一个合法的 JSON 对象，并且必须放在一个 ```json 代码块里。禁止输出任何 JSON 之外的文字、解释、前言、问候、结语或 Markdown 标题。即使你不确定，也必须输出完整的 JSON 字段（可为空字符串），绝不能输出"好的""以下是"之类的引导语。';
+  const articleStrictRule = '【硬性输出格式】你只能输出一个合法的 JSON 对象，并且必须放在一个 ```json 代码块里。禁止输出任何 JSON 之外的文字、解释、前言、问候、结语或 Markdown 标题。即使你不确定，也必须输出完整的 JSON 字段（可为空字符串），绝不能输出"好的""以下是"之类的引导语。思考可以放 <think></think> 里，但 ```json 代码块外禁止任何字符。为保证 JSON 完整闭合、不被截断：整体输出控制在 2500 字符以内，content 每节 250-350 字即可，keyPoints 1-2 条、quote 可空字符串。';
 
   const sysByType = {
     title: '你是资深生物医药内容创作者，擅长起爆款标题。' + compliance,
@@ -1597,7 +1597,7 @@ function buildPrompt(){
   const usrByType = {
     title: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请生成 10 个爆款标题候选，每行一个，风格多样（疑问式、数字式、悬念式、痛点式、反差式）。${extra?'\n补充要求：'+extra:''}`,
     script: `主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n请输出：1) 标题\n2) 黄金3秒钩子\n3) 正文口播脚本（分镜头）\n4) 结尾 CTA\n5) 封面文案建议。${extra?'\n补充要求：'+extra:''}`,
-    article: `${strictArticle?'⚠️ 只输出一个 ```json 代码块，其中是合法 JSON 对象，不要任何其他文字。\n':''}主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n${outlineBlock}${outlineBlock?'\n':''}${refBlock}${refBlock?'\n\n':''}【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（必须呼应标题与文章核心主题的具体科学场景；医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内，必须紧扣本节正文的具体科学内容（具体分子/细胞/器官/机制场景，禁止泛泛描述），无文字插画"\n    }\n  ]（${outlineBlock?'章节数量必须与提纲一致':'3-5个 sections'}）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
+    article: `${strictArticle?'⚠️ 只输出一个 ```json 代码块，其中是合法 JSON 对象，不要任何其他文字。\n':''}主题：${topic}\n内容分类：${catDesc}\n目标平台：${plat}\n${outlineBlock}${outlineBlock?'\n':''}${refBlock}${refBlock?'\n\n':''}【严格输出 JSON，不要任何解释性文字、不要 markdown 标题、必须放在一个 \`\`\`json 代码块里】。字段：\n{\n  "title": "标题（吸引人、含数字/悬念、不超过30字）",\n  "lead": "导语150字以内，钩子开头，引出全文",\n  "coverPrompt": "封面图视觉描述30字内（必须呼应标题与文章核心主题的具体科学场景；医学插画风/科技风/温柔科普风）",\n  "sections": [\n    {\n      "heading": "本节小标题（10字内）",\n      "content": "本节正文300-500字，通俗比喻讲清一个要点",\n      "keyPoints": ["关键点1", "关键点2"],\n      "quote": "本节关键金句/数据引用（可选，没有就空字符串）",\n      "imagePrompt": "本节配图视觉描述30字内，必须紧扣本节正文的具体科学内容（具体分子/细胞/器官/机制场景，禁止泛泛描述），无文字插画"\n    }\n  ]（${outlineBlock?'章节数量必须与提纲一致':(strictArticle?'3个 sections（减少篇幅，确保 JSON 完整闭合不被截断）':'3-5个 sections')}）,\n  "conclusion": "总结+引导关注+互动话题（如：你在评论区说说）"\n}\n${extra?'补充要求：'+extra:''}`,
     plain: `请把以下内容改写成通俗科普（普通人都能看懂）：\n${topic}\n${extra?'\n补充要求：'+extra:''}`
   };
 
@@ -1714,7 +1714,7 @@ async function retryArticleWithStrict(){
   }
   // 2. 在补充要求里追加更强指令（保留用户原本的补充要求）
   const extra = $('#aiExtra');
-  const strictHint = '【极重要】你的回复必须只包含一个 ```json 代码块，不要输出任何思考/解释/前言。即使你在思考，也必须把思考放在 <think></think> 里并以 {} 代码块结尾。';
+  const strictHint = '【极重要·防截断】你的回复必须只包含一个 ```json 代码块（JSON 对象），不要输出任何思考/解释/前言。思考可放 <think></think> 里，但代码块外禁止任何字符。字段精简：content 每节 250-350 字、keyPoints 1-2 条、quote 可空字符串。整体输出控制在 2500 字符内，确保 JSON 完整闭合不被截断。';
   if(extra && !extra.value.includes(strictHint)){
     extra.value = (extra.value.trim() ? extra.value.trim()+'\n' : '') + strictHint;
   }
