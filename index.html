@@ -2368,9 +2368,23 @@ function renderVideoFlowStatus(){
 // 视频请求统一走 CORS 代理（MiniMax 视频 API 不支持浏览器直连），内置重试
 async function videoFetch(url, options){
   const proxy = (state.aiConfig && state.aiConfig.videoProxy) ? state.aiConfig.videoProxy.trim() : '';
-  const realUrl = proxy
-    ? proxy.replace(/\/+$/,'') + (proxy.includes('?') ? '&' : '?') + 'url=' + encodeURIComponent(url)
-    : url;
+  let realUrl;
+  if(proxy){
+    const p = proxy.replace(/\/+$/,'');
+    // 智能拼接：兼容用户填的"带 ?url="和"不带 ?url="两种写法
+    if(/[?&]url=$/.test(p)){
+      // 代理已带占位符（用户按之前指引填了"…/?url="）
+      realUrl = p + encodeURIComponent(url);
+    } else if(p.includes('?')){
+      // 代理已带其他 query 参数
+      realUrl = p + '&url=' + encodeURIComponent(url);
+    } else {
+      // 代理干净，无 query
+      realUrl = p + '?url=' + encodeURIComponent(url);
+    }
+  } else {
+    realUrl = url;
+  }
   // 网络抖动自动重试 3 次（Cloudflare Worker 冷启动/网络瞬断）
   let lastErr;
   for(let i=0; i<3; i++){
@@ -3261,22 +3275,27 @@ function showProxyGuide(){
     </ol>
     <pre style="background:#0d1117;color:#e6edf3;padding:12px;border-radius:8px;overflow:auto;font-size:12px;line-height:1.5">export default {
   async fetch(request) {
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+      'Access-Control-Allow-Headers': '*'
+    };
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-        'Access-Control-Allow-Headers': '*'
-      }});
+      return new Response(null, { status: 204, headers: corsHeaders });
     }
     const url = new URL(request.url);
     const target = url.searchParams.get('url');
-    if (!target) return new Response('missing url', { status: 400 });
+    if (!target) return new Response('missing url', { status: 400, headers: corsHeaders });
     const headers = new Headers(request.headers);
     headers.delete('origin');
-    const resp = await fetch(target, { method: request.method, headers, body: request.body });
-    const rh = new Headers(resp.headers);
-    rh.set('Access-Control-Allow-Origin', '*');
-    return new Response(resp.body, { status: resp.status, headers: rh });
+    try {
+      const resp = await fetch(target, { method: request.method, headers, body: request.body });
+      const rh = new Headers(resp.headers);
+      Object.entries(corsHeaders).forEach(([k,v])=>rh.set(k,v));
+      return new Response(resp.body, { status: resp.status, headers: rh });
+    } catch(e) {
+      return new Response('proxy error: ' + e.message, { status: 502, headers: corsHeaders });
+    }
   }
 }</pre>
     <ol start="4" style="padding-left:20px;margin:10px 0">
