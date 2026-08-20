@@ -487,7 +487,14 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
             <div class="field">
               <label>时长（秒）</label>
               <select class="input" id="videoDuration">
-                <option>5</option><option>8</option><option>10</option><option>15</option>
+                <option>5</option>
+                <option>8</option>
+                <option>10</option>
+                <option>15</option>
+                <option>20</option>
+                <option selected>30</option>
+                <option>45</option>
+                <option>60</option>
               </select>
             </div>
           </div>
@@ -1758,7 +1765,7 @@ async function generateVideoScript(opts){
   const prov = PROVIDERS.find(p=>p.key===state.aiConfig.provider) || PROVIDERS[0];
   if(!curAccount().apiKey){ showToast('请先在 AI 设置里填写 '+prov.name+' 的 API Key'); openSettings(); return; }
   const duration = +$('#videoDuration').value || 10;
-  const sceneCount = Math.max(3, Math.min(6, Math.round(duration / 2.5)));
+  const sceneCount = Math.max(3, Math.min(8, Math.round(duration / 4)));
   const btn = $('#videoScriptBtn');
   const oldHtml = btn.innerHTML;
   btn.disabled = true;
@@ -2158,7 +2165,7 @@ async function generateVideo(){
     // 整合：分镜 prompt 用逗号连接，加上整体风格描述
     const shots = videoScriptData.map(s=>s.prompt).filter(Boolean).join(', ');
     const polished = ($('#videoPolished').value||'').trim();
-    prompt = (shots || polished || '').slice(0, 800);
+    prompt = (shots || polished || '').slice(0, 1500);
   } else {
     prompt = ($('#videoPolished').value || $('#videoIdea').value || '').trim();
   }
