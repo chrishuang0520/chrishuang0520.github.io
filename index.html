@@ -457,10 +457,14 @@ textarea.input{resize:vertical;min-height:76px;line-height:1.55}
                 <label>背景音乐风格</label>
                 <select class="input" id="bgmStyle">
                   <option value="none">无 BGM（仅配音）</option>
-                  <option value="calm">轻音乐（钢琴/轻柔，适合科普）</option>
-                  <option value="tech">科技感（电子/节拍，适合前沿研究）</option>
-                  <option value="warm">温暖治愈（弦乐/民谣，适合患者故事）</option>
-                  <option value="energetic">鼓舞人心（鼓点+上升，适合振奋）</option>
+                  <option value="calm" selected>轻音乐钢琴（舒缓科普）</option>
+                  <option value="tech">科技电子（前沿研究）</option>
+                  <option value="warm">温暖治愈（患者故事）</option>
+                  <option value="energetic">鼓舞人心（突破进展）</option>
+                  <option value="playful">轻快活泼（健康生活）</option>
+                  <option value="suspense">悬疑紧张（疾病机制）</option>
+                  <option value="strings">抒情弦乐（人文关怀）</option>
+                  <option value="epic">大气史诗（行业格局）</option>
                 </select>
               </div>
               <div class="field">
@@ -2019,7 +2023,7 @@ function downloadNarrationText(){
   showToast('已下载旁白 .txt ✓');
 }
 
-// ==== 背景音乐：Web Audio API 程序化合成 30 秒循环 WAV ====
+// ==== 背景音乐：分层编曲合成引擎（无版权，30 秒循环 WAV）====
 let bgmAudioCtx = null;
 let bgmSource = null;
 function ensureBgmCtx(){
@@ -2034,17 +2038,18 @@ function previewBGM(){
   if(style==='none'){ showToast('当前是无 BGM'); return; }
   ensureBgmCtx();
   if(bgmSource){ try{ bgmSource.stop(); }catch(e){} bgmSource = null; }
-  const dur = 30;
-  const sample = renderBGM(style, dur);
-  // 循环播放
-  const src = bgmAudioCtx.createBufferSource();
-  src.buffer = sample; src.loop = true;
-  const gain = bgmAudioCtx.createGain();
-  gain.gain.value = parseFloat($('#bgmVol').value) || 0.3;
-  src.connect(gain).connect(bgmAudioCtx.destination);
-  src.start();
-  bgmSource = src;
-  showToast('BGM 循环播放中…（30秒循环）');
+  showToast('BGM 合成中（约 1-3 秒）…');
+  setTimeout(()=>{
+    const sample = renderBGM(style, 30);
+    const src = bgmAudioCtx.createBufferSource();
+    src.buffer = sample; src.loop = true;
+    const gain = bgmAudioCtx.createGain();
+    gain.gain.value = parseFloat($('#bgmVol').value) || 0.3;
+    src.connect(gain).connect(bgmAudioCtx.destination);
+    src.start();
+    bgmSource = src;
+    showToast('BGM 循环播放中…');
+  }, 50);
 }
 function stopBGM(){
   if(bgmSource){ try{ bgmSource.stop(); }catch(e){} bgmSource = null; }
@@ -2052,65 +2057,136 @@ function stopBGM(){
 function downloadBGM(){
   const style = $('#bgmStyle').value;
   if(style==='none'){ showToast('当前是无 BGM，无需下载'); return; }
-  const dur = 30;
-  const sample = renderBGM(style, dur);
-  const wav = audioBufferToWav(sample);
-  const blob = new Blob([wav], {type:'audio/wav'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `BGM_${style}_30s.wav`;
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 60000);
-  showToast('已下载 BGM .wav ✓ （可循环 30 秒）');
+  showToast('正在合成并打包 WAV…');
+  setTimeout(()=>{
+    const sample = renderBGM(style, 30);
+    const wav = audioBufferToWav(sample);
+    const blob = new Blob([wav], {type:'audio/wav'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `BGM_${style}_30s.wav`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 60000);
+    showToast('已下载 BGM .wav ✓（30秒可循环）');
+  }, 50);
 }
-// 不同风格：4 种程序化合成（无版权）
-function renderBGM(style, durSec){
+// 音乐理论工具
+const NOTE = m => 440 * Math.pow(2, (m-69)/12); // MIDI → 频率
+const CHORD_INT = {maj:[0,4,7], min:[0,3,7]}; // 大/小三和弦
+const PENTA = [0,2,4,7,9]; // 大调五声音阶（不会跑调的旋律）
+// 和弦进行：I-V-vi-IV（流行经典进行）
+const BGM_PROG = [
+  {root:48, type:'maj'}, // C
+  {root:43, type:'maj'}, // G
+  {root:45, type:'min'}, // Am
+  {root:41, type:'maj'}  // F
+];
+const BGM_STYLES = {
+  calm:      {bpm:72,  wave:['sine','triangle'],    drum:0, arp:'slow', melody:0.35, bassAmp:0.20},
+  tech:      {bpm:112, wave:['square','sawtooth'],  drum:1, arp:'fast', melody:0.50, bassAmp:0.22},
+  warm:      {bpm:78,  wave:['triangle','sine'],    drum:0, arp:'pad',  melody:0.28, bassAmp:0.18},
+  energetic: {bpm:126, wave:['sawtooth','square'],  drum:2, arp:'fast', melody:0.50, bassAmp:0.25},
+  playful:   {bpm:100, wave:['sine','triangle'],    drum:1, arp:'mid',  melody:0.60, bassAmp:0.20},
+  suspense:  {bpm:66,  wave:['sawtooth','sine'],    drum:0, arp:'low',  melody:0.20, bassAmp:0.26},
+  strings:   {bpm:70,  wave:['sawtooth','triangle'],drum:0, arp:'pad',  melody:0.40, bassAmp:0.22},
+  epic:      {bpm:88,  wave:['sawtooth','square','triangle'], drum:2, arp:'wide', melody:0.45, bassAmp:0.26}
+};
+// 分层编曲渲染：和弦进行 + 贝斯 + 和声(琶音/持续) + 五声旋律 + 鼓组 + 混响
+function renderBGM(styleKey, durSec){
   const ctx = ensureBgmCtx();
-  const sr = 22050; // 减小文件体积
+  const st = BGM_STYLES[styleKey] || BGM_STYLES.calm;
+  const sr = 22050;
   const buf = ctx.createBuffer(2, Math.round(sr*durSec), sr);
   const L = buf.getChannelData(0), R = buf.getChannelData(1);
-  // 基础频率 / 节奏参数
-  const spec = {
-    calm:      {bpm: 70,  harmony: [261.63, 329.63, 392.00], wave: 'sine',     drum: false, arp: false}, // C 大三和弦
-    tech:      {bpm: 110, harmony: [146.83, 220.00, 293.66], wave: 'square',   drum: true,  arp: true},  // D 小三
-    warm:      {bpm: 80,  harmony: [220.00, 277.18, 329.63], wave: 'triangle', drum: false, arp: false}, // A 小三
-    energetic: {bpm: 128, harmony: [196.00, 246.94, 293.66], wave: 'sawtooth', drum: true,  arp: true}   // G 小三
-  }[style] || {bpm:80, harmony:[261.63,329.63,392], wave:'sine', drum:false, arp:false};
-  const beatSec = 60/spec.bpm;
-  for(let t=0; t<buf.length; t++){
-    const sec = t/sr;
-    const beatPos = sec / beatSec;
-    const beat = Math.floor(beatPos);
-    const beatFrac = beatPos - beat;
-    // 和弦轮转：每 4 拍换一组音
-    const chord = spec.harmony[beat % spec.harmony.length];
-    // 根音持续
-    const baseAmp = 0.18;
-    let s = 0;
-    // 主体和弦（柔和）
-    for(let i=0;i<3;i++){
-      const f = chord * (i+1 === 3 ? 2 : (i+1)); // 根、三、五、八度
-      s += osc(spec.wave, f, sec) * (i===0?1:0.5) * baseAmp;
+  const beatSec = 60/st.bpm;
+  const barSec = beatSec*4;
+  const bars = Math.ceil(durSec/barSec);
+  const events = []; // {t, d, f, a, w, pan}
+  for(let bar=0; bar<bars; bar++){
+    const chord = BGM_PROG[bar % BGM_PROG.length];
+    const barStart = bar*barSec;
+    // 尾音渐弱：最后 1.5 小节淡出，保证循环接缝自然
+    const fadeOut = bar >= bars-2 ? 0.55 : 1;
+    const chordNotes = CHORD_INT[chord.type].map(iv => NOTE(chord.root+12+iv)); // 中音区
+    const bassNote = NOTE(chord.root);
+    // === 贝斯层：每拍根音 ===
+    for(let b=0;b<4;b++){
+      events.push({t:barStart+b*beatSec, d:beatSec*0.92, f:bassNote, a:st.bassAmp*fadeOut, w:st.wave[0], pan:0});
     }
-    // 琶音（科技/振奋）
-    if(spec.arp){
-      const arpNote = spec.harmony[(beat*3) % spec.harmony.length] * 2;
-      const arpEnv = Math.exp(-beatFrac*4);
-      s += osc('triangle', arpNote, sec) * arpEnv * 0.15;
-    }
-    // 鼓点（科技/振奋）
-    if(spec.drum){
-      const onBeat = beatFrac < 0.05;
-      if(onBeat){
-        // kick: 低频正弦脉冲
-        s += Math.sin(2*Math.PI*60*sec) * Math.exp(-beatFrac*30) * 0.4;
-        // hat: 偶尔高频噪声
-        if(beat%2===1) s += (Math.random()*2-1) * 0.05;
+    // === 和声层 ===
+    if(st.arp==='pad'){
+      // 持续和弦（弦乐/温暖风）
+      chordNotes.forEach((f,i)=> events.push({t:barStart, d:barSec*0.99, f, a:0.09*fadeOut, w:st.wave[1]||'sine', pan:(i-1)*0.25}));
+    } else {
+      // 琶音
+      const step = st.arp==='fast' ? beatSec/2 : st.arp==='mid' ? beatSec*0.75 : beatSec;
+      const stepsPerBar = Math.floor(barSec/step);
+      for(let s=0; s<stepsPerBar; s++){
+        let f = chordNotes[s % chordNotes.length];
+        if(st.arp==='wide' && s%2===1) f *= 2; // 大气风高八度穿插
+        if(st.arp==='low' && s%3===2) f /= 2;  // 悬疑风低八度穿插
+        events.push({t:barStart+s*step, d:step*0.88, f, a:0.11*fadeOut, w:st.wave[1]||'triangle', pan:(s%2?0.3:-0.3)});
       }
     }
-    // 防爆音
-    s = Math.max(-0.95, Math.min(0.95, s));
-    L[t] = s; R[t] = s;
+    // === 旋律层：五声音阶走句（调性内，不跑调） ===
+    if(st.melody>0){
+      const melBase = chord.root+24; // 高两个八度
+      let mi = (bar*2) % PENTA.length;
+      const melDur = beatSec*2;
+      for(let s=0;s<2;s++){
+        mi = (mi + 1 + ((bar*3+s)%3)) % PENTA.length;
+        const f = NOTE(melBase + PENTA[mi]);
+        events.push({t:barStart+s*melDur+beatSec*0.5, d:melDur*0.8, f, a:st.melody*0.13*fadeOut, w:st.wave[0], pan:(s%2?0.18:-0.18)});
+      }
+    }
+    // === 鼓层 ===
+    if(st.drum>0){
+      for(let b=0;b<4;b++){
+        const t = barStart+b*beatSec;
+        if(st.drum===2 || b%2===0) events.push({t, d:0.20, f:58, a:0.45*fadeOut, w:'kick', pan:0});
+        if(b%2===1) events.push({t, d:0.13, a:0.26*fadeOut, w:'snare', pan:0.08});
+        events.push({t:t+beatSec/2, d:0.05, a:0.10*fadeOut, w:'hat', pan:-0.08});
+      }
+    }
+  }
+  // === 渲染音符事件（ADSR 包络）===
+  events.forEach(ev=>{
+    const startIdx = Math.round(ev.t*sr);
+    const nSamples = Math.min(Math.round(ev.d*sr), buf.length-startIdx);
+    if(nSamples <= 0) return;
+    for(let i=0;i<nSamples;i++){
+      const idx = startIdx+i;
+      const tt = i/sr;
+      const ph = i/nSamples;
+      // ADSR 简化包络：5% attack，70% 后开始 release
+      let env;
+      if(ph < 0.03) env = ph/0.03;
+      else if(ph > 0.7) env = Math.max(0, (1-ph)/0.3);
+      else env = 1;
+      let s = 0;
+      if(ev.w==='kick'){
+        s = Math.sin(2*Math.PI*ev.f*(1-ph*0.5)*tt) * Math.exp(-tt*16);
+      } else if(ev.w==='snare'){
+        s = ((Math.random()*2-1)*0.6 + Math.sin(2*Math.PI*185*tt)*0.4) * Math.exp(-tt*22);
+      } else if(ev.w==='hat'){
+        s = (Math.random()*2-1) * Math.exp(-tt*55);
+      } else {
+        s = osc(ev.w, ev.f, tt);
+      }
+      s *= env * ev.a;
+      const pl = Math.max(0, ev.pan), pr = Math.max(0, -ev.pan);
+      L[idx] += s*(1-pl);
+      R[idx] += s*(1-pr);
+    }
+  });
+  // === 后期：混响 + 软限幅 ===
+  const revDelayL = Math.round(sr*0.062), revDelayR = Math.round(sr*0.093);
+  for(let i=0;i<buf.length;i++){
+    let l = L[i] + (i>revDelayL ? L[i-revDelayL]*0.10 : 0);
+    let r = R[i] + (i>revDelayR ? R[i-revDelayR]*0.10 : 0);
+    l = Math.tanh(l*0.85); r = Math.tanh(r*0.85);
+    L[i] = Math.max(-0.95, Math.min(0.95, l));
+    R[i] = Math.max(-0.95, Math.min(0.95, r));
   }
   return buf;
 }
@@ -2158,7 +2234,16 @@ function audioBufferToWav(buffer){
 
 async function generateVideo(){
   const cfg = state.aiConfig;
-  if(!cfg.videoKey){ showToast('请先在 AI 设置里填写「视频 API Key」'); openSettings(); return; }
+  // 校验错误渲染到结果区（不只是 toast，用户能清楚看到原因）
+  const showErr = (msg, extra) => {
+    $('#aiOutBody').innerHTML = `<div class="empty" style="padding:30px 20px;max-width:680px;margin:0 auto">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:42px;height:42px;margin:0 auto 14px;display:block"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <div style="color:var(--danger);font-weight:700;font-size:15px">${esc(msg)}</div>
+      ${extra?`<div style="color:var(--muted);font-size:13px;margin-top:10px;line-height:1.7">${extra}</div>`:''}
+    </div>`;
+    showToast(msg);
+  };
+  if(!cfg.videoKey){ showErr('请先填写「视频 API Key」', '点右上角 ⚙ 齿轮 → 「视频 API Key」一栏填写（与文本/图像 Key 不同，通常需要 MiniMax 订阅/Coding Plan 专用 Key）'); openSettings(); return; }
   // 视频生成提示词优先级：脚本整合 > 完善后创意 > 原始想法
   let prompt = '';
   if(videoScriptData.length){
@@ -2169,7 +2254,7 @@ async function generateVideo(){
   } else {
     prompt = ($('#videoPolished').value || $('#videoIdea').value || '').trim();
   }
-  if(!prompt){ showToast('请先输入视频创意，并完成 AI 完善'); $('#videoIdea').focus(); return; }
+  if(!prompt){ showErr('请先填写视频创意', '按流程操作：① 在创意输入框写一句想法 → ② 点「AI 完善创意」→ ③ 点「AI 生成脚本」→ 再点「生成视频」。<br>也可以直接在 ① 写完整描述后点「生成视频」'); $('#videoIdea').focus(); return; }
   const ratio = $('#videoRatio').value;
   const duration = +$('#videoDuration').value;
   const resolution = $('#videoRes').value;
@@ -2216,6 +2301,10 @@ async function generateVideo(){
     if(/Failed to fetch|NetworkError|fetch/i.test(msg)) msg = '网络请求失败，请检查视频接口地址与网络';
     if(/1004|authorization|unauthorized|invalid api key|authentication|401|403|login fail/i.test(msg)){
       msg = '视频 API Key 无效或缺失 — 点右上角齿轮，检查「视频 API Key」是否正确';
+    }
+    // 时长/分辨率不支持的典型报错
+    if(/duration|resolution|invalid param|参数/i.test(msg)){
+      msg += '。<br><b>提示：</b>如果选择了 30/45/60 秒时长，MiniMax H3 可能不支持（常见支持 5-10 秒），请改用 10 或 15 秒重试';
     }
     $('#aiOutBody').innerHTML = `<div class="empty" style="color:var(--danger)">视频生成失败：${esc(msg)}</div>`;
   }finally{
