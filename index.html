@@ -1805,8 +1805,8 @@ async function generateVideoScript(opts){
       const lastText = (typeof _lastScriptRaw === 'string') ? _lastScriptRaw : '';
       list.innerHTML = `<div style="border:1px solid var(--danger-soft);background:#FFF5F5;border-radius:10px;padding:12px;color:var(--danger)">
         <div style="font-weight:700;margin-bottom:6px">✗ 脚本生成失败：${esc(msg)}</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">可能原因：①模型只输出思考内容未生成 JSON ②输出包含 markdown 标题/前言未严格遵循 JSON ③max_tokens 不足。建议在 AI 设置换 GPT-4o / Claude Sonnet / 智谱 glm-4.7 等严格遵循 JSON 的模型，或点下方"用更强指令重试"。</div>
-        ${lastText ? `<details style="font-size:12px"><summary style="cursor:pointer;color:var(--muted)">查看模型原始输出（前 800 字符）</summary><pre style="background:#fff;padding:8px;border-radius:6px;margin-top:6px;max-height:240px;overflow:auto;white-space:pre-wrap">${esc(lastText.slice(0,800))}</pre></details>` : ''}
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">可能原因：①模型只输出"复述我的要求"那种思考文字未生成 JSON ②输出含 markdown 标题/前言未严格遵循 JSON ③max_tokens 不足。建议在 AI 设置换 GPT-4o / Claude Sonnet / 智谱 glm-4.7 等严格遵循 JSON 的模型，或点下方"用更强指令重试"。</div>
+        ${lastText ? `<details style="font-size:12px" open><summary style="cursor:pointer;color:var(--muted);user-select:none">查看模型原始输出（前 2000 字符，可滚动）</summary><pre style="background:#fff;padding:8px;border-radius:6px;margin-top:6px;max-height:360px;overflow:auto;white-space:pre-wrap;word-break:break-all">${esc(lastText.slice(0,2000))}</pre></details>` : ''}
         <div style="display:flex;gap:6px;margin-top:8px">
           <button class="btn btn-sm" onclick="regenVideoScript()">🔁 用更强指令重试</button>
         </div>
@@ -1818,30 +1818,67 @@ async function generateVideoScript(opts){
     btn.innerHTML = oldHtml;
   }
 }
-// 鲁棒的分镜 JSON 解析：处理 think 块 + 思考发言 + 多种包装
+// 鲁棒的分镜 JSON 解析：
+// 1) 剥 <think> 块
+// 2) 尝试整体 JSON
+// 3) 尝试 ```json ... ``` 代码块
+// 4) 配对扫描：找第一个完整的 [...] 数组（不管前面有多少"复述 prompt"式思考文字）
+// 5) 配对扫描：找第一个完整的 {...} 对象，看是否有 scenes/shots 数组
 function parseScriptJSON(text){
   if(!text) return null;
-  // 1) 剥掉 <think>...</think> 块
+  const tryParse = s => { try{ return JSON.parse(s); }catch(e){ return null; } };
+  // 1) 剥 <think>...</think>
   let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
   if(!cleaned) cleaned = text.trim();
-  // 2) 剥掉开篇的"思考发言"（>30 字符才出现首个 [ 或 { 时砍掉前文）
-  if(!/^\s*[\[{]/.test(cleaned)){
-    const firstJson = cleaned.search(/```json|```javascript|\[|\{/);
-    if(firstJson > 30) cleaned = cleaned.slice(firstJson).trim();
+  // 2) 整体 JSON
+  let d = tryParse(cleaned);
+  if(d){
+    if(Array.isArray(d)) return d;
+    if(d && Array.isArray(d.scenes)) return d.scenes;
+    if(d && Array.isArray(d.shots)) return d.shots;
   }
   // 3) 优先 ```json ... ``` 代码块
   const m = cleaned.match(/```(?:json|javascript)?\s*([\s\S]*?)```/i);
   if(m){
-    try{ return JSON.parse(m[1].trim()); }catch(e){}
+    d = tryParse(m[1].trim());
+    if(d){
+      if(Array.isArray(d)) return d;
+      if(d && Array.isArray(d.scenes)) return d.scenes;
+      if(d && Array.isArray(d.shots)) return d.shots;
+    }
   }
-  // 4) 整体就是 JSON
-  try{ return JSON.parse(cleaned.trim()); }catch(e){}
-  // 5) 大括号/中括号配对扫描：找第一个完整的数组或 {scenes:[]} / {shots:[]}
-  const tries = [/\[[\s\S]*?\]/, /\{[\s\S]*?\}/];
-  for(const re of tries){
-    const m2 = cleaned.match(re);
-    if(m2){
-      try{ return JSON.parse(m2[0]); }catch(e){}
+  // 4) 配对扫描：找第一个完整的 [...] 数组（核心：忽略前面所有思考文字）
+  const extractBalanced = (startChar, endChar) => {
+    const start = cleaned.indexOf(startChar);
+    if(start < 0) return null;
+    let depth = 0, inStr = false, esc = false, quote = '';
+    for(let i = start; i < cleaned.length; i++){
+      const c = cleaned[i];
+      if(inStr){
+        if(esc){ esc = false; continue; }
+        if(c === '\\'){ esc = true; continue; }
+        if(c === quote) inStr = false;
+      } else {
+        if(c === '"' || c === "'"){ inStr = true; quote = c; }
+        else if(c === startChar) depth++;
+        else if(c === endChar){ depth--; if(depth === 0) return cleaned.slice(start, i+1); }
+      }
+    }
+    return null;
+  };
+  const arrStr = extractBalanced('[', ']');
+  if(arrStr){
+    d = tryParse(arrStr);
+    if(Array.isArray(d)) return d;
+  }
+  // 5) 配对扫描：找第一个完整的 {...} 对象，看里面是否有 scenes/shots
+  const objStr = extractBalanced('{', '}');
+  if(objStr){
+    d = tryParse(objStr);
+    if(d){
+      if(Array.isArray(d)) return d;
+      if(Array.isArray(d.scenes)) return d.scenes;
+      if(Array.isArray(d.shots)) return d.shots;
     }
   }
   return null;
